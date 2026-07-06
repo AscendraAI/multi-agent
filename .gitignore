@@ -1,0 +1,33 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs / temp
+*.log
+*.tmp
+
+# 런타임 캐시 — 로컬 경로·UUID 포함, git 추적 안 함
+cache/
+
+# 작업 데이터 — 사용자 사적 자료, git 추적 안 함 (폴더 구조 유지를 위해 .gitkeep만 추적)
+tasks/*
+!tasks/.gitkeep
+
+# 프로젝트 특화 교훈 — 작성자 사적 누적물, git 추적 안 함 (폴더만 유지)
+_local/*
+!_local/.gitkeep
+
+# bkit 플러그인 런타임·상태·감사 로그 — 머신·세션 종속, git 추적 안 함
+.bkit/
+
+# Claude Code 로컬 설정·락 — 머신 종속, git 추적 안 함 (settings.json·agents/는 추적)
+.claude/settings.local.json
+.claude/*.lock
