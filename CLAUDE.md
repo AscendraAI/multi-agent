@@ -118,9 +118,15 @@ wc -w tasks/<task>/context.md   # 영문 단어수
 
 ## Approval Gate
 
-- `workers_approved`에 없는 worker 호출 금지 (claude-main 포함 전체 worker pool 적용)
-- 작업당 첫 호출 전 사용자에게 확인 후 `task.md` 업데이트
-- 예외: Orchestrator의 내부 추론은 worker 호출이 아니므로 승인 불필요
+**운영 모델 = `_shared/autonomy-policy.md`(소비스 티어, 정본).** 승인은 스텝이 아니라 결과 위험도로 게이팅한다:
+
+- **AUTO (무프롬프트)**: 읽기·검색·`write_scope` 내 편집·테스트·린트·타입체크·비파괴 bash·`git add/commit`. 워커 호출도 승인된 웨이브 범위 내면 무프롬프트.
+- **HARD-STOP (승인 전 진행 금지)**: `write_scope` 밖 수정/삭제·비가역(대량삭제·force push·prod 배포·과금·publish)·`target_repo` 외 쓰기·시크릿/prod 접근·범위·비용 2배↑·스스로 기본값 못 정하는 설계 분기.
+- **승인 단위 = 웨이브(task) 착수 시 `write_scope` 1회 배치 승인** → 그 안 워커별 재승인 금지. `workers_approved`에 명시적 기록 유지(claude-main 포함 전체 pool).
+- **사람 게이트 = PR/diff 리뷰**(대상 repo remote 없으면 로컬 작업명 브랜치 + diff 제시로 대체). 회신 "GO"→다음 웨이브 / "수정:…"→반영 후 재검토.
+- 예외: Orchestrator 내부 추론은 승인 불필요.
+
+상세·정본은 `_shared/autonomy-policy.md`. 이 절과 충돌 시 CLAUDE.md 우선이나, 본 절은 autonomy-policy와 정합되게 유지한다.
 
 ## Verification (결과물 수락 전 필수)
 
