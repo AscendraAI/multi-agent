@@ -18,14 +18,20 @@
 
 ## 2. 전송 (둘 중 택1)
 
-### A. git 원격 (코드용, 권장)
+### A. git 원격 (완료됨 ✅)
+원격은 이미 연결·push 됨 (2026-07-07, SSH):
+- `git@github.com:AscendraAI/multi-agent.git` — `main`, `autonomy-policy-adoption`
+- `git@github.com:AscendraAI/raceplanner.git` — `main`, `w0-w3-foundation`
+
+**타 노트북에서 clone (⚠️ 작업은 feature 브랜치에 있음 — main 아님):**
 ```bash
-# 이 노트북에서 (GitHub 비공개 repo 2개 미리 생성 후)
-git -C /Users/noi/multi-agent  remote add origin <multi-agent-repo-url>
-git -C /Users/noi/multi-agent  push -u origin --all
-git -C /Users/noi/raceplanner  remote add origin <raceplanner-repo-url>
-git -C /Users/noi/raceplanner  push -u origin --all
+git clone git@github.com:AscendraAI/raceplanner.git /Users/noi/raceplanner
+git -C /Users/noi/raceplanner checkout w0-w3-foundation      # W0+W1+W3 여기
+git clone git@github.com:AscendraAI/multi-agent.git /Users/noi/multi-agent
+git -C /Users/noi/multi-agent checkout autonomy-policy-adoption   # 정책·알림·권한 여기
 ```
+(타 노트북에도 SSH 키 등록 필요: `ssh-keygen -t ed25519` → 공개키를 github.com/settings/keys)
+
 ⚠️ `tasks/`·`_local/`은 gitignore라 **push에 안 실린다** → 아래 별도 복사.
 ```bash
 # 오케스트레이션 메모리 + 시크릿은 out-of-band (예: Drive)
