@@ -26,13 +26,14 @@
 
 ## 3. 알림 2채널 (D9 확장 — 완료는 조용, 막힘만 시끄럽게)
 
-| 이벤트 | 채널 | 성격 |
+| 이벤트 | loud 알림(주체) | 기록·회신 채널 |
 |---|---|---|
-| `agent_completed` (스테이징·PR 오픈, 막힌 것 없음) | 관제실 DM(저소음) | FYI 보고 |
-| `agent_needs_input` (HARD-STOP·대기) | 관제실 DM + **폰 푸시** | 즉시 대응 |
+| `agent_completed` (스테이징·PR, 막힌 것 없음) | 없음(조용) | 관제실 Slack (FYI 기록) |
+| `agent_needs_input` (HARD-STOP·대기) | **폰 푸시(PushNotification)** | 관제실 Slack (질문 게시·답장 읽기) |
 
+- **loud ping 주체 = 폰 푸시.** ⚠️ Slack MCP는 **사용자 명의**로 게시 → Slack은 *자기 메시지*에 알림을 주지 않는다. 따라서 관제실 Slack은 **기록·회신(답장 폴링)** 채널이고, 실제 알림은 **폰 푸시(다른 주체)**가 담당한다. Slack 자체 핑이 필요하면 **비-사용자 주체**(앱 Incoming Webhook·봇)를 별도 세팅해 그 값으로 교체.
 - 관제실 채널: 전용 채널 `C0BGH4K5LL8`. 교체 시 이 값만.
-- best-effort: Slack/MCP 미가용 시 알림 스킵·터미널 폴백(알림 실패가 진행을 막지 않음, D9 일관).
+- best-effort: 폰 푸시(Remote Control 미연결)·Slack 미가용 시 알림 스킵·터미널 폴백(알림 실패가 진행을 막지 않음, D9 일관).
 
 ## 4. 표준 결정 규칙 (반복 질문을 위임 — 묻지 말 것)
 

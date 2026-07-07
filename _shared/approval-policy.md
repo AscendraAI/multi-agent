@@ -29,7 +29,7 @@
 3. `ScheduleWakeup` — 관제실 DM 폴링으로 답장 대기(활성 ~60–240s 캐시 유지 구간 / 유휴 1200s+). 폴링은 **인터랙티브 세션 생존 시에만** 동작(D5 일관)
 4. 답장 수신 → 승인/수정으로 파싱 → `task.md` `workers_approved` 갱신 + `log.md` `[APPROVAL]` 기록. 승인 채널(터미널·Slack) 무관하게 기록 형식 동일
 
-**관제실 채널**: 전용 비공개 채널 `C0BGH4K5LL8` (`#claude-orchestrator`). 다른 채널로 옮기려면 이 값만 교체.
+**관제실 채널**: 전용 비공개 채널 `C0BGH4K5LL8` (`#claude-orchestrator`). 다른 채널로 옮기려면 이 값만 교체. Slack은 사용자 명의라 *자기 메시지* 알림이 없으므로 **실제 loud 알림은 폰 푸시(PushNotification)**가 담당하고, Slack은 질문 게시·답장 읽기용이다(autonomy-policy §3).
 
 외부 repo 쓰기 4조건(brief `target_repo`·`write_scope`, `task.md` 승인, `log.md` `[APPROVAL]`)은 이 알림과 무관하게 그대로 필수.
 
