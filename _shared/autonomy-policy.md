@@ -29,11 +29,12 @@
 | 이벤트 | loud 알림(주체) | 기록·회신 채널 |
 |---|---|---|
 | `agent_completed` (스테이징·PR, 막힌 것 없음) | 없음(조용) | 관제실 Slack (FYI 기록) |
-| `agent_needs_input` (HARD-STOP·대기) | **폰 푸시(PushNotification)** | 관제실 Slack (질문 게시·답장 읽기) |
+| `agent_needs_input` (HARD-STOP·대기) | **Slack Incoming Webhook** (`_shared/adapters/notify.sh`) | 관제실 Slack (질문 게시·답장 읽기) |
 
-- **loud ping 주체 = 폰 푸시.** ⚠️ Slack MCP는 **사용자 명의**로 게시 → Slack은 *자기 메시지*에 알림을 주지 않는다. 따라서 관제실 Slack은 **기록·회신(답장 폴링)** 채널이고, 실제 알림은 **폰 푸시(다른 주체)**가 담당한다. Slack 자체 핑이 필요하면 **비-사용자 주체**(앱 Incoming Webhook·봇)를 별도 세팅해 그 값으로 교체.
+- **loud ping 주체 = Slack Incoming Webhook**(앱 명의 게시 → 사용자에게 알림 옴). 발송기 `_shared/adapters/notify.sh`, 웹훅 URL은 **gitignored `_local/slack-webhook`**(시크릿 — 커밋 금지, 경로만 참조).
+- ⚠️ Slack MCP(`slack_send_message`)는 **사용자 명의**라 자기 메시지 알림이 없다 → MCP는 **질문 게시·답장 폴링(읽기)** 전용, 실제 loud ping은 웹훅(다른 주체)이 담당. 폰 푸시(PushNotification)는 폴백.
 - 관제실 채널: 전용 채널 `C0BGH4K5LL8`. 교체 시 이 값만.
-- best-effort: 폰 푸시(Remote Control 미연결)·Slack 미가용 시 알림 스킵·터미널 폴백(알림 실패가 진행을 막지 않음, D9 일관).
+- best-effort: 웹훅 URL 미설정·발송 실패 시 스킵·터미널 폴백(알림 실패가 진행을 막지 않음 — notify.sh가 exit 0로 처리, D9/D10 일관).
 
 ## 4. 표준 결정 규칙 (반복 질문을 위임 — 묻지 말 것)
 
