@@ -15,7 +15,7 @@
       "call_type": "mcp",
       "mcp": {
         "tool": "mcp__codex__codex",
-        "args_template": { "prompt": "@brief_content", "sandbox": "workspace-write", "approval-policy": "on-failure" }
+        "args_template": { "prompt": "@brief_content", "sandbox": "read-only", "approval-policy": "on-failure" }
       },
       "brief_mode": "content",
       "approval_class": "worker",
