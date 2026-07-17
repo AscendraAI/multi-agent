@@ -61,8 +61,7 @@
           "model": "gemini-3.1-pro-preview", "call_type": "api", "timeout": 300,
           "approval_class": "worker", "result_capture": "envelope",
           "api": { "ref": "adapters/gemini_api.sh", "required_env": [],
-                   "key_file": "_local/gemini-api-key",
-                   "brief_pass": "arg1", "retry": { "max": 2, "backoff_s": 2 } }
+                   "key_file": "_local/gemini-api-key", "brief_pass": "arg1" }
         }
       ]
     }

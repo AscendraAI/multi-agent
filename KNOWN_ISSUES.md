@@ -10,8 +10,8 @@
 
 ## KI-2 — `write_scope`가 산문으로만 강제된다 (bypassPermissions 하에서 기계적 경계 0)
 
-- **상태**: 🟡 **부분 완화 (2차)** — 열린 채로 둔다. 1차: allowlist 가드 / 2차: sandbox 래핑으로 repo+tmp 밖 쓰기 차단. 남은 것은 **repo 안 쓰기** 하나. 2026-07-17, `tasks/multiagent-v2-build/` W2 + `worker-sandbox`
-- **심각도**: 높음 → **중간**. 직접 쓰기는 막혔으나 **완전한 기계적 강제는 아니다**(아래 남은 구멍).
+- **상태**: 🟡 **부분 완화 (3차)** — 열린 채로 둔다. 1차 allowlist 가드 / 2차 sandbox 래핑 / 3차 우회·fail-open 경화(codex-critic 2026-07-18). 2026-07-17~18, `tasks/multiagent-v2-build/` W2 + `worker-sandbox` + `final-polish`
+- **심각도**: 높음 → **중간**. repo **밖** 쓰기는 커널이 막는다. **완전한 기계적 강제는 아니다**(아래 남은 구멍 — 단수 아님).
 - ⚠️ **"해소"로 표기했다가 되돌림** — codex-critic이 초판 denylist의 우회 7종을 실측으로 뚫었다. 완화를 해소로 부르지 말 것.
 
 ### 완화 내용
@@ -37,7 +37,9 @@ allowlist 통과 명령을 `sandbox-exec`(seatbelt)로 감싸 **커널 레벨에
 
 ### 남은 구멍 (이 이슈를 닫지 못하는 이유)
 
-1. **repo 안 쓰기** — 커널은 캐시와 소스를 구분하지 못한다. `pnpm test`가 쓰는 `node_modules/.cache`와 워커가 `src/`를 건드리는 것을 seatbelt는 같은 "repo 쓰기"로 본다. **이게 KI-2가 열려 있는 유일한 이유**다.
+1. **repo 안 쓰기** (주된 잔여) — 커널은 캐시와 소스를 구분하지 못한다. `pnpm test`가 쓰는 `node_modules/.cache`와 워커가 `src/`를 건드리는 것을 seatbelt는 같은 "repo 쓰기"로 본다. $()/백틱·find -exec·리다이렉션 같은 우회를 3차에서 막았으나, **막아도 repo 안이면 커널이 허용**한다.
+1b. **sandbox 비가용 시 조용한 강등** — `sandbox-exec`나 프로파일이 없으면(비-macOS CI 등) 가드는 allowlist-only로 통과시킨다. 그 환경에선 커널 경계가 없다. INV16d가 프로파일 부재는 잡으나, `sandbox-exec` 바이너리 부재(Linux)는 설계상 강등.
+1c. **의도적 미추적 우회** — awk `system()`·sed `w file`은 검색어 오탐(`grep "system("`) 때문에 일부러 안 막는다. 전부 repo-내부 쓰기라 (1)과 같은 이유로 어차피 열림.
 2. ⇒ 이것은 **사고·표류 방지**이지 **적대적 샌드박스가 아니다.** 적대적 워커를 가정하지 말 것.
 3. 완전히 닫으려면 repo를 읽기전용으로 두고 캐시만 오버레이로 빼야 하는데, 그건 worktree 격리와 같은 문제(`tasks/` 부재)에 부딪힌다. **현재 알려진 깨끗한 경로 없음.**
 

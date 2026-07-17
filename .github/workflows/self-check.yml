@@ -2,8 +2,12 @@ name: self-check
 
 # 왜 CI인가: `_shared/autonomy-policy.md` §5는 "규약이 아니라 CI가 강제자"라 선언했는데,
 # 정작 시스템 자신의 불변식은 orchestrator가 기억할 때만 돌았다(자기모순 — claude-main G7, 2026-07-17).
-# D10상 사람 게이트가 PR이므로, CI가 그 자리에서 강제자가 된다. Stop 훅은 알림(fail-open),
-# 이 워크플로가 실제 게이트다.
+# D10상 사람 게이트가 PR이므로, 이 워크플로가 그 자리에서 회귀를 잡는다. Stop 훅은 알림(fail-open).
+#
+# ⚠️ 강제력의 전제: 이 워크플로가 **머지를 실제로 막으려면** GitHub branch protection에서
+#    이 job을 required status check로 지정해야 한다. 그 설정이 없으면(현재 main 미보호,
+#    codex-critic 2026-07-18 확인) CI는 red여도 머지 가능 — "게이트"가 아니라 "사후 탐지"다.
+#    설정은 repo admin 권한 필요 → 운영자 결정 사항.
 
 on:
   pull_request:
@@ -45,10 +49,11 @@ jobs:
             if echo "$out" | grep -q '"deny"'; then got=deny; else got=allow; fi
             if [ "$got" != "$1" ]; then echo "::error::가드 회귀 — '$2' → $got (기대 $1)"; fail=1; fi
           }
-          # 차단돼야
+          # 차단돼야 — 직접 쓰기 + codex-critic 2026-07-18 우회 벡터
           check deny 'echo x > f'
           check deny 'python3 -c "open(1,2)"'
           check deny 'node -e "x"'
+          check deny 'node -p "x"'
           check deny 'echo x >| f'
           check deny '/usr/bin/touch f'
           check deny 'eval "$(base64 -d <<< x)"'
@@ -57,10 +62,20 @@ jobs:
           check deny 'git commit -m x'
           check deny 'cat a | tee b'
           check deny 'npm install'
-          # 통과돼야 (과차단 = claude-main 역할 파괴)
+          check deny 'echo $(touch PWN)'
+          check deny 'echo `touch PWN`'
+          check deny 'find . -exec touch x {} ;'
+          check deny 'git diff --output=PWN'
+          check deny '{ touch x; }'
+          check deny $'echo a\ntouch x'
+          # fail-closed: 깨진 입력 → deny
+          printf '{' | bash "$G" | grep -q '"deny"' || { echo "::error::fail-closed 깨짐 — 깨진 입력이 deny 아님"; fail=1; }
+          # 통과돼야 (과차단 = claude-main 역할 파괴). Linux엔 sandbox-exec 없어 allow(래핑 없음) — deny만 아니면 OK
           check allow 'pnpm test'
           check allow 'npx tsc --noEmit'
           check allow 'grep -rn foo src/'
+          check allow 'grep -rn "print >" src'
+          check allow 'grep "system(" src'
           check allow 'git log --oneline -5'
           check allow 'git diff HEAD'
           check allow 'pnpm build 2>&1 | tail -20'

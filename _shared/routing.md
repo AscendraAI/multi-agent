@@ -40,7 +40,7 @@ design_contract: tasks/<task>/design-contract.md
 
 | 게이트 | 실행자 | 성격 | 판정 |
 |---|---|---|---|
-| **G0-M1 오버플로우** | orchestrator (무모델, `_shared/tools/design-measure.mjs`) | **blocking** | 390·1440에서 `scrollWidth == clientWidth` (문서 레벨 실측). 판정은 `scrollWidth` 기준 — offender 목록은 *진단 정보*일 뿐 판정 근거가 아니다(부모 `overflow:hidden`에 클립된 요소를 오탐하므로) |
+| **G0-M1 오버플로우** | orchestrator (무모델, `_shared/tools/design-measure.mjs`) | **blocking** | 390·1440에서 **사용자가 실제로 가로 스크롤 하게 되는가**(`scrollWidth > clientWidth` **그리고** 실효 `overflow-x`가 hidden/clip이 아님). scrollWidth만·offender 목록만 보면 클립된 장식요소를 오탐하므로 둘 다 판정 근거가 아니다 — 진단 정보로만 싣는다 |
 | G0-기타 (대비·탭타겟·타입스케일·토큰) | 동상 | **warn-only** | 관측만. 표준 근거가 있는 것(탭타겟 **WCAG 2.2 AA 24px**·대비 WCAG 4.5:1)과 없는 것(타입스케일 3~6·토큰 준수율)을 출력에서 구분한다 — 근거 없는 숫자로 게이트를 세우지 않는다. blocking 승격은 실측 3건 후 |
 | G1 코드 | codex-critic | blocking | 현행과 동일 (계약 불변·회귀·write_scope) |
 | G2 시각 | gemini | **미규정 — 이번 웨이브에서 정하지 않는다** | 비전의 blocking 적합성은 **시험된 적이 없다**. blocking도 advisory도 근거가 없다 — 쓰려면 **시험 설계부터**. (2026-07-15를 비전 오탐 근거로 든 주장은 오귀속으로 철회됨: 그날 오탐 주체는 gemini가 아니라 orchestrator의 `--window-size` 스크린샷 해석이었고, gemini는 오버플로우를 판정한 적조차 없다) |
