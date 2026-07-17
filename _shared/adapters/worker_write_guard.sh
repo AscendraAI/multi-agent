@@ -80,33 +80,36 @@ case "$tool" in
     #   과차단은 복구 가능하다(워커가 result에 적고 Orchestrator가 실행 — 기존 계약 그대로).
     #   미탐은 조용히 정책을 무너뜨린다. 이 시스템의 fail-safe 방향은 전자다.
 
-    # probe = 리다이렉션·세그먼트 검사용 정제본. 순서 중요:
-    #  1) 따옴표 스팬('...' "...") 제거 — 셸에서 따옴표 안의 `>`는 리다이렉션이 아니라 순수
-    #     텍스트다. 안 지우면 `grep "a>b" f`가 오차단된다(codex-critic 2026-07-18 과차단 실증).
-    #     명령치환 `$(`/백틱은 이 앞에서 이미 원본으로 차단했으므로 여기서 따옴표를 지워도 안전.
-    #  2) 무해한 `2>&1`·`>/dev/null` 제거 — 안 지우면 `&` 세그먼트 분해 때 `1`이 명령으로 읽힌다.
-    probe="$(printf '%s' "$cmd" | sed -e "s/'[^']*'//g" -e 's/"[^"]*"//g' \
-                                      -e 's/[0-9]*>&[0-9]*//g' -e 's#[0-9]*>>*[[:space:]]*/dev/null##g')"
+    # probe = 리다이렉션·세그먼트 검사용 정제본. 순서 중요(codex-critic 2026-07-18 과차단 반영):
+    #  1) 이스케이프 따옴표(\" \') 제거 — 안 지우면 `s/"[^"]*"//g`가 `\"`를 종료로 오인해 스팬이 어긋남
+    #  2) 따옴표 스팬('...' "...") 제거 — 따옴표 안 `>`·`;`·`#`는 순수 텍스트다(`grep "a>b"` 오차단 방지)
+    #  3) 주석 제거 — ` #...`는 셸 주석. 안 지우면 `grep foo # ; touch`가 오차단
+    #  4) 무해한 `2>&1`·`>/dev/null` 제거 — 안 지우면 `&` 분해 때 `1`이 명령으로 읽힘
+    # ⚠️ sed 실패 시 **fail-closed** — 정규식이 죽으면 probe가 비어 모든 검사가 무력화된다
+    #    (2026-07-18 실증: BSD sed가 `[^<newline>]`에서 죽어 전 우회가 SANDBOXED로 샜다).
+    #    ※ 주석 제거는 `.*`(줄 끝까지) — sed는 줄 단위 처리라 `.`가 개행을 안 먹어 안전하고,
+    #      `[^newline]` 클래스는 BSD sed에서 금지다.
+    probe="$(printf '%s' "$cmd" | sed -e 's/\\"//g' -e "s/\\\\'//g" \
+                                      -e "s/'[^']*'//g" -e 's/"[^"]*"//g' \
+                                      -e 's/[[:space:]]#.*//' \
+                                      -e 's/[0-9]*>&[0-9]*//g' -e 's#[0-9]*>>*[[:space:]]*/dev/null##g')" \
+      || deny "worker_write_guard: probe 정제 실패 — 판정 불가라 차단한다."
 
     # 남은 리다이렉션은 전부 쓰기로 본다 — 명령이 무엇이든 차단.
     if printf '%s' "$probe" | grep -qE '>'; then
       deny "claude-main의 셸 리다이렉션 쓰기가 차단됐다(write_scope=none). 산출물은 텍스트로 반환하라 — Orchestrator가 파일로 남긴다. (2>&1 · >/dev/null 은 허용)"
     fi
 
-    # 명령 치환은 파서가 내부를 분석할 수 없다 → **분석 불가는 차단**(fail-closed).
-    #   `echo $(touch f)`·`echo \`touch f\`` 는 첫 토큰 echo만 보면 통과하지만 내부가 임의 명령이다.
-    #   워커 검증은 읽기 전용이라 치환이 거의 불필요 — 필요하면 재구성하라(codex-critic 2026-07-18).
-    case "$cmd" in
-      *'$('*|*'`'*)
-        deny "claude-main의 명령 치환(\$(...) · 백틱)이 차단됐다 — 내부를 분석할 수 없어 안전을 위해 차단한다. 값이 필요하면 여러 단계로 나눠 result에 적어라." ;;
-    esac
+    # 세그먼트 분해: ; && || | 개행 { } ( ) 백틱 로 나눠 **각 조각의 첫 토큰**을 allowlist로 본다.
+    #   → 명령치환 `$(touch x)`·백틱·프로세스치환 `<(...)`의 **내부 명령도 첫 토큰으로 검사됨**.
+    #     그래서 `$(git merge-base ...)`(git=허용)는 통과하고 `$(touch)`(touch=미허용)는 차단된다.
+    #     전면 `$()` 차단은 정상 검증 명령(`git diff $(...)`)까지 막아 제거(codex-critic 2026-07-18).
+    #   **파라미터 확장만 사용**(here-doc·subshell 없음) — here-doc는 TMP 쓰기 불가 환경에서 실패해
+    #     루프가 통째로 건너뛰어졌다(codex-critic: fail-OPEN). 순수 셸로 fail-closed 보장.
+    #   env·command 는 **exec 래퍼**라 allowlist에서 제외(`env touch` 우회) — which·type은 read-only라 유지.
+    ALLOWED='|ls|cat|head|tail|wc|grep|rg|egrep|fgrep|find|file|stat|du|df|tree|diff|cmp|jq|yq|awk|sed|cut|uniq|sort|tr|xxd|od|basename|dirname|realpath|readlink|echo|printf|true|false|test|which|type|pwd|date|sleep|node|npx|pnpm|npm|yarn|bun|deno|tsc|eslint|prettier|vitest|jest|python3|python|pip|pytest|ruff|mypy|go|cargo|rustc|make|git|gh|codex|claude|agy|'
 
-    # 세그먼트 분해: ; && || | 개행 { 로 나눠 각 조각의 첫 토큰을 본다.
-    # **파라미터 확장만 사용**(here-doc·subshell 없음) — here-doc는 TMP 쓰기 불가 환경에서
-    #   실패해 루프가 통째로 건너뛰어졌다(codex-critic 재현: fail-OPEN). 순수 셸로 fail-closed 보장.
-    ALLOWED='|ls|cat|head|tail|wc|grep|rg|egrep|fgrep|find|file|stat|du|df|tree|diff|cmp|jq|yq|awk|sed|cut|uniq|sort|tr|xxd|od|basename|dirname|realpath|readlink|echo|printf|true|false|test|which|command|type|env|pwd|date|sleep|node|npx|pnpm|npm|yarn|bun|deno|tsc|eslint|prettier|vitest|jest|python3|python|pip|pytest|ruff|mypy|go|cargo|rustc|make|git|gh|codex|claude|agy|'
-
-    segs="$(printf '%s' "$probe" | tr ';|&\n{}()' '\n\n\n\n\n\n\n\n\n')"
+    segs="$(printf '%s' "$probe" | tr ';|&'"$nl"'{}()`<>' '\n\n\n\n\n\n\n\n\n\n\n\n')"
     remaining="$segs"
     while [ -n "$remaining" ]; do
       case "$remaining" in
@@ -130,8 +133,9 @@ case "$tool" in
     if printf '%s' "$cmd" | grep -qE '(^|[[:space:]])git[[:space:]]+(add|commit|push|checkout|switch|reset|clean|rebase|merge|stash|rm|mv|apply|restore|config|tag|branch[[:space:]]+-)([[:space:]]|$)'; then
       deny "claude-main의 git 상태 변경이 차단됐다. 커밋·브랜치는 Orchestrator 소관이다. 읽기(log/diff/show/status/blame)는 허용된다."
     fi
-    if printf '%s' "$cmd" | grep -qE '(-o|--output)[=[:space:]]'; then
-      deny "claude-main의 --output/-o 파일쓰기가 차단됐다(git diff --output 등). 결과는 텍스트로 반환하라."
+    # `--output` 장형만 차단 — 짧은 `-o`는 `grep -o`·`sort -o` 등 정상 플래그라 오차단(codex-critic 2026-07-18).
+    if printf '%s' "$cmd" | grep -qE '[-][-]output[=[:space:]]'; then
+      deny "claude-main의 --output 파일쓰기가 차단됐다(git diff --output 등). 결과는 텍스트로 반환하라."
     fi
     if printf '%s' "$cmd" | grep -qE '(^|[[:space:]])(sed|perl|python3?|ruby)[[:space:]]+[^;|&]*(-i|-c|-e)([[:space:]]|$)'; then
       deny "claude-main의 in-place 편집·인라인 스크립트(sed -i / python3 -c 등)가 차단됐다 — 임의 파일쓰기 경로다. 변경은 diff로 반환하라."

@@ -150,17 +150,20 @@ fi
 #   deny가 나오는지 본다 — 초판은 트랩 문자열 존재만 봤고 실제 fail-OPEN을 PASS시켰다(codex-critic 2026-07-18).
 _g="$ROOT/_shared/adapters/worker_write_guard.sh"
 if [ -x "$_g" ]; then
-  # (1) 깨진 JSON 입력 → deny여야 (fail-closed)
-  _r1="$(printf '{' | bash "$_g" 2>/dev/null | grep -c '"deny"')"
-  # (2) 명령치환 우회 → deny여야
-  _r2="$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo $(touch X)"}}' | bash "$_g" 2>/dev/null | grep -c '"deny"')"
-  # (3) 정상 읽기 → deny 아니어야 (과차단 아님)
-  _r3="$(jq -nc '{tool_name:"Bash",tool_input:{command:"grep -rn foo src"}}' | bash "$_g" 2>/dev/null | grep -c '"deny"')"
-  if [ "$_r1" = "1" ] && [ "$_r2" = "1" ] && [ "$_r3" = "0" ]; then
-    pass "INV16e 가드 fail-closed 행동 검사 (깨진입력·치환우회 deny / 정상읽기 통과)"
-  else
-    fail "INV16e — 가드 행동 이상: 깨진입력deny=$_r1(1기대) 치환우회deny=$_r2(1기대) 정상읽기deny=$_r3(0기대)"
-  fi
+  _gd() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | bash "$_g" 2>/dev/null | grep -c '"deny"'; }
+  _bad=""
+  # 차단돼야 (deny=1). codex-critic 2026-07-18 우회 벡터 포함.
+  for c in 'echo $(touch X)' 'echo `touch X`' 'echo ok; touch X' 'env touch X' 'command touch X' 'find . -exec touch X {} ;' 'echo x > f'; do
+    [ "$(_gd "$c")" = "1" ] || _bad="$_bad [deny실패:$c]"
+  done
+  # 깨진 JSON → deny (fail-closed)
+  [ "$(printf '{' | bash "$_g" 2>/dev/null | grep -c '"deny"')" = "1" ] || _bad="$_bad [깨진입력 fail-OPEN]"
+  # 통과돼야 (deny=0). 과차단이면 워커 역할 파괴.
+  for c in 'grep -rn foo src' 'grep -o foo f' 'git diff $(git merge-base HEAD origin/main)' 'grep "print >" src'; do
+    [ "$(_gd "$c")" = "0" ] || _bad="$_bad [과차단:$c]"
+  done
+  [ -z "$_bad" ] && pass "INV16e 가드 행동 검사 (우회 7종 deny·fail-closed·정상 4종 통과)" \
+    || fail "INV16e — 가드 행동 이상:$_bad"
 fi
 
 # ── 유지보수자 전용 (자산 있을 때만) ──
