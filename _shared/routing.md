@@ -40,10 +40,10 @@ design_contract: tasks/<task>/design-contract.md
 
 | 게이트 | 실행자 | 성격 | 판정 |
 |---|---|---|---|
-| **G0-M1 오버플로우** | orchestrator (무모델, `_shared/tools/design-measure.mjs`) | **blocking** | 390·1440에서 `scrollWidth == clientWidth`, offenders 0 |
+| **G0-M1 오버플로우** | orchestrator (무모델, `_shared/tools/design-measure.mjs`) | **blocking** | 390·1440에서 `scrollWidth == clientWidth` (문서 레벨 실측). 판정은 `scrollWidth` 기준 — offender 목록은 *진단 정보*일 뿐 판정 근거가 아니다(부모 `overflow:hidden`에 클립된 요소를 오탐하므로) |
 | G0-기타 (대비·탭타겟·타입스케일·토큰) | 동상 | **warn-only** | 임계값 근거 미확립 → 관측만. blocking 승격은 실측 3건 후 |
 | G1 코드 | codex-critic | blocking | 현행과 동일 (계약 불변·회귀·write_scope) |
-| G2 시각 | gemini | **판정 보류** | 비전의 blocking 적합성은 **미시험**. 쓰려면 advisory로 — 지적 목록만 받고 orchestrator가 `write_scope ∩ DoD` 교집합만 채택 |
+| G2 시각 | gemini | **미규정 — 이번 웨이브에서 정하지 않는다** | 비전의 blocking 적합성은 **시험된 적이 없다**. blocking도 advisory도 근거가 없다 — 쓰려면 **시험 설계부터**. (2026-07-15를 비전 오탐 근거로 든 주장은 오귀속으로 철회됨: 그날 오탐 주체는 gemini가 아니라 orchestrator의 `--window-size` 스크린샷 해석이었고, gemini는 오버플로우를 판정한 적조차 없다) |
 
 **강제 아님 — 권장이다.** 게이트 전량 강제는 웨이브당 워커 호출을 1→3으로 늘려 최소 worker set(아래 §복합 작업 우선순위 2)과 autonomy-policy §1 HARD-STOP ⑤(비용 2배↑)에 저촉된다. 필요한 게이트만 고른다.
 

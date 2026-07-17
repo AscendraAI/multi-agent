@@ -31,3 +31,8 @@ _local/*
 # Claude Code 로컬 설정·락 — 머신 종속, git 추적 안 함 (settings.json·agents/는 추적)
 .claude/settings.local.json
 .claude/*.lock
+
+# Python 가상환경 — 로컬 전용, git 추적 안 함
+.venv/
+__pycache__/
+*.pyc

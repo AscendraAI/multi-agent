@@ -141,8 +141,20 @@ try {
   const m1Failures = [];
   const warnings = [];
   for (const [w, m] of Object.entries(per)) {
-    if (m.overflow || m.offenders.length > 0) {
-      m1Failures.push({ width: Number(w), scrollWidth: m.scrollWidth, clientWidth: m.clientWidth, offenders: m.offenders });
+    // 판정은 documentElement.scrollWidth 하나로만 한다.
+    // offenders는 *진단 정보*이지 판정 근거가 아니다 — getBoundingClientRect는 부모의
+    // overflow:hidden/clip을 모르므로, 클립된 장식 요소·의도적 off-canvas를 오탐한다
+    // (scrollWidth == clientWidth인데 offenders > 0인 상태가 정상적으로 존재한다).
+    // 근거 없는 오탐으로 정상 UI를 반려하지 않기 위함 (codex-critic 2026-07-17).
+    if (m.overflow) {
+      m1Failures.push({
+        width: Number(w),
+        scrollWidth: m.scrollWidth,
+        clientWidth: m.clientWidth,
+        suspects: m.offenders, // 진단용 — 부모 클립 미고려. 범인 후보일 뿐 확정 아님
+      });
+    } else if (m.offenders.length > 0) {
+      warnings.push(`[${w}] 뷰포트 밖 요소 ${m.offenders.length}개이나 문서 오버플로우 없음(부모가 클립 중) — 판정 아님, 진단 참고: ${m.offenders.slice(0, 2).map((o) => o.tag + (o.cls ? '.' + o.cls.split(' ')[0] : '')).join(', ')}`);
     }
     // warn-only: 임계값에 근거가 없다. 관측만 하고 판정하지 않는다.
     if (m.uniqueFontSizes > 6) warnings.push(`[${w}] 고유 font-size ${m.uniqueFontSizes}개 (참고대역 3~6 — 근거 미확립, 판정 아님)`);

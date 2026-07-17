@@ -98,12 +98,28 @@ echo "INV14b 권위순위에 autonomy-policy 포함 (design-basis §2; 존재해
 grep -n 'autonomy-policy.md`* >' "$ROOT/_shared/design-basis.md" || grep -n 'autonomy-policy' "$ROOT/_shared/design-basis.md" | head -1
 
 echo "INV15a routing.md 호출기전 값 재기술 (D11 — 출력 없어야 PASS)"
-grep -nE '^\s*-\s*`(sandbox|approval-policy|call_type|args_template)`\s*:' "$ROOT/_shared/routing.md" || echo " (재기술 없음 = PASS)"
-echo "INV15b backends codex-main = workspace-write / codex-critic = read-only (둘 다 나와야 PASS)"
-jq -r '.workers["codex-main"].mcp.args_template.sandbox   | select(. == "workspace-write") | " codex-main workspace-write PASS"' "$ROOT/_shared/backends.json"
-jq -r '.workers["codex-critic"].mcp.args_template.sandbox | select(. == "read-only")      | " codex-critic read-only PASS"'      "$ROOT/_shared/backends.json"
+# 표기 무관하게 '기전 키 + 실제 값'이 같은 줄에 붙어 있으면 재기술로 본다.
+# (`- \`sandbox\`:` 형태만 잡던 초판은 `**sandbox**:`·표·산문을 놓쳤다 — codex-critic 2026-07-17)
+grep -nEi '(sandbox|approval-policy|call_type|args_template|cwd_policy|fallbacks|timeout)[^|]{0,20}(workspace-write|read-only|danger-full-access|on-failure|on-request|untrusted|never|\bmcp\b|\bcli\b|\bnative\b|isolated_tmp)' \
+  "$ROOT/_shared/routing.md" \
+  | grep -viE 'backends\.json|정본|D11|포인터|jq ' \
+  || echo " (재기술 없음 = PASS)"
+
+echo "INV15b backends 값 — 틀리면 FAIL (exit status로 전달)"
+inv15b_fail=0
+check_backend() { # $1=worker $2=키 $3=기대값
+  local got
+  got="$(jq -r --arg w "$1" --arg k "$2" '.workers[$w].mcp.args_template[$k] // "MISSING"' "$ROOT/_shared/backends.json")"
+  if [ "$got" = "$3" ]; then echo " $1.$2 = $got PASS"
+  else echo " $1.$2 = $got (기대 $3) FAIL"; inv15b_fail=1; fi
+}
+check_backend codex-main   sandbox           workspace-write
+check_backend codex-main   approval-policy   on-failure
+check_backend codex-critic sandbox           read-only
+[ "$inv15b_fail" -eq 0 ] || echo " INV15b FAIL — backends 값이 D11/역할 계약과 불일치"
+
 echo "INV15c D11 절 존재 (design-basis; 존재해야 PASS)"
-grep -n 'D11 정본 소유 규칙' "$ROOT/_shared/design-basis.md"
+grep -q 'D11 정본 소유 규칙' "$ROOT/_shared/design-basis.md" && echo " PASS" || echo " FAIL"
 
 # ── 유지보수자 전용 (optional): 3 flavor 교차 점검 (generator templates 있을 때만) ──
 TPL="$ROOT/plugins/multi-agent-starter/skills/configure-multiagent/generator/templates"

@@ -10,10 +10,11 @@
 
 ## KI-2 — `write_scope`가 산문으로만 강제된다 (bypassPermissions 하에서 기계적 경계 0)
 
-- **상태**: ✅ **해소** (claude-main 한정) — `_shared/adapters/worker_write_guard.sh` + agent frontmatter 훅. 2026-07-17, `tasks/multiagent-v2-build/` W2
-- **심각도**: (해소 전) 높음 — 정책 위반이 **아무 저항 없이 통과**했다.
+- **상태**: 🟡 **부분 완화** (claude-main 한정) — 열린 채로 둔다. `_shared/adapters/worker_write_guard.sh` + agent frontmatter 훅. 2026-07-17, `tasks/multiagent-v2-build/` W2
+- **심각도**: 높음 → **중간**. 직접 쓰기는 막혔으나 **완전한 기계적 강제는 아니다**(아래 남은 구멍).
+- ⚠️ **"해소"로 표기했다가 되돌림** — codex-critic이 초판 denylist의 우회 7종을 실측으로 뚫었다. 완화를 해소로 부르지 말 것.
 
-### 해소 내용
+### 완화 내용
 
 `.claude/agents/claude-main.md` frontmatter에 `hooks: PreToolUse (matcher: Write|Edit|NotebookEdit|Bash)`로 가드를 부착. 실측 근거 2건:
 
@@ -22,7 +23,13 @@
 
 E2E 실측: 프롬프트에 "이 호출에 한해 write_scope 승인됨"이라 써넣어도 **차단**됨 — 가드가 프롬프트가 아니라 역할로 강제한다.
 
-**남은 한계** (정직하게): 난독화된 쓰기(`eval`·base64·`python -c`)는 못 잡는다. 사고 방지이지 적대적 샌드박스가 아니다. 진짜 격리는 sandbox 백엔드(codex-main 경로) 소관.
+**denylist → allowlist 전환** (codex-critic 실측 후): 초판 denylist는 `python3 -c open(w)` · `node -e writeFileSync` · `echo >| f` · `/usr/bin/touch` · `eval "$(base64 -d)"` · `curl -o` · `rsync`를 **전부 통과**시켰다. denylist는 원리적으로 진다 → 읽기·검증 명령 allowlist로 뒤집어 실패 모드를 "조용히 뚫림"에서 "과차단"으로 바꿨다. 과차단은 복구 가능하다(워커가 result에 적고 Orchestrator가 실행 — 기존 계약). 회귀 28/28 PASS(우회 14 DENY / 정상작업 14 ALLOW).
+
+### 남은 구멍 (이 이슈를 닫지 못하는 이유)
+
+1. **허용 명령의 간접 쓰기** — `pnpm test`·`npx tsc --incremental`·`pytest`는 캐시·coverage·snapshot·증분빌드 산출물을 쓴다. 허용해야 워커가 검증을 하므로 **의도적으로 남긴 구멍**이다. 즉 `write_scope=none`은 여전히 완전 강제되지 않는다.
+2. **allowlist 안 도구의 미열거 쓰기 경로** — `git`·`jq`·`awk` 등의 창의적 오용.
+3. ⇒ 이것은 **사고·표류 방지**이지 **적대적 샌드박스가 아니다.** 적대적 워커를 가정하지 말 것. 진짜 격리는 프로세스 레벨 sandbox(codex-main 경로) 소관.
 
 **운영 유의**: agent frontmatter는 **세션 시작 시 로드** — 가드는 새 세션부터 유효하다.
 
