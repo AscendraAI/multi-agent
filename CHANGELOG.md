@@ -3,6 +3,24 @@
 이 파일은 MultiAgent orchestration 시스템의 주요 변경을 기록한다.
 형식은 [Keep a Changelog](https://keepachangelog.com/), 버전은 [Semantic Versioning](https://semver.org/lang/ko/)을 따른다.
 
+## [1.3.0] - 2026-07-17
+
+자율 운용 전환(D9·D10) 백필 + 정본 소유 규칙(D11) 신설. 1.2.2 이후 미기록분을 함께 정리한다.
+
+### Added
+- **D11 정본 소유 규칙 + INV15** — 사실의 *종류별* 단일 소유를 명문화. 호출 기전(`call_type`·`sandbox`·`approval-policy`·`model`·`timeout`·`fallbacks`)은 `_shared/backends.json`, 역할·선택 정책·토폴로지는 `_shared/routing.md`가 유일 정본. routing은 기전 값을 재기술하지 않고 포인터만 둔다. 모순 시 "높은 문서가 이긴다"가 아니라 "그 종류를 소유한 파일이 이긴다". D4(gemini 한정)의 일반화. (`tasks/multiagent-v2-build/`)
+- **`_shared/autonomy-policy.md` + D10 + INV14** — 승인 단위를 스텝 → **결과 위험도 티어**(AUTO 무프롬프트 / HARD-STOP 6트리거)로 전환. 승인은 **웨이브 1회 배치**, 사람 게이트는 **PR/diff 리뷰 하나**. 권위 슬롯: CLAUDE.md > autonomy-policy > routing/approval/orchestrator-rules.
+- **원격 승인 알림 (D9 + INV13)** — 승인 요청 시 Slack DM + 폰 푸시 병행, `ScheduleWakeup` 폴링으로 원격 답장 수용. **best-effort 보조 채널** — 미가용 시 터미널 승인으로 폴백(알림 실패가 작업을 막지 않음). 정본은 `approval-policy.md` "원격 승인 알림" 절.
+- **`_shared/adapters/notify.sh`** — Slack Incoming Webhook loud-ping 액터. self-message가 푸시를 못 띄우는 문제 때문에 도입, `@멘션` 프리픽스 + `link_names`로 푸시 강제.
+- **`HANDOFF.md`** — 랩탑 간 재개 절차(클론·피처브랜치 체크아웃·CC 유저메모리 이관 포함).
+
+### Changed
+- **`.claude/settings.json` `defaultMode: bypassPermissions`** — 원격 자율 운용에서 하네스 프롬프트를 제거. AUTO 티어 허용목록도 함께 정렬. ⚠️ 이로써 **프롬프트라는 마지막 그물이 사라졌다** — `write_scope`는 현재 산문으로만 강제되며 기계적 경계가 없다(알려진 공백, `KNOWN_ISSUES.md` KI-2).
+
+### Fixed
+- **backends.json ↔ routing.md 정본 모순** — `codex-main`이 backends에선 `sandbox: read-only`·`approval-policy: never`, routing에선 `workspace-write 고정`·`on-failure 권장`이었다. backends를 따르면 codex-main이 **자기 존재 이유(`tasks/<task>/` 산출물 작성)를 수행할 수 없다.** 디스패처가 `native|mcp`를 `die`시켜(`call_worker.sh:61`) 런타임에 안 읽혔기에 **무증상 잠복**했고 어느 INV도 이 쌍을 검사하지 않았다. D11에 따라 backends 값을 설계 의도(`workspace-write`/`on-failure`)로 정정하고 routing의 중복 게재를 포인터로 대체. INV15가 재발을 막는다.
+- **`_shared/adapters/call_worker.sh`·`gemini_api.sh` 실행 권한 부재** — `rw-r--r--`로 `./call_worker.sh` 직행이 `permission denied`. `chmod +x`(mode 100644→100755). 실제로 2026-07-17 리서치 웨이브에서 디스패처 호출이 막혔다.
+
 ## [1.2.2] - 2026-07-04
 
 ### Fixed

@@ -90,3 +90,13 @@
 **worker**: orchestrator(마이그레이션·라이브 편집), codex-critic+gemini=agy(검수)
 
 - [2026-07-09] **HARD-STOP은 Slack 병행 발사가 필수 실행단계**: AskUserQuestion(터미널)만으로 끝내면 정책 위반(2026-07-09 실제 누락). 매 HARD-STOP에 `slack_send_message(C0BGH4K5LL8, 질문)` + `_shared/adapters/notify.sh "요약"`(loud ping) 둘 다 쏜 뒤 답장 수용(터미널·Slack 무관). 인프라는 검증됨(webhook→채널 도착, MCP 읽기 정상) — 유일 실패모드는 "안 쏘는 것". 정본 approval-policy.md §원격승인알림.
+
+- [2026-07-09] **스택 PR 머지: base 브랜치 삭제 전에 종속 PR을 먼저 재타겟하라.** GitHub는 PR의 base 브랜치가 삭제되면 그 PR을 자동 재타겟이 아니라 **CLOSED**(재오픈 불가) 처리한다(gh pr merge --delete-branch 연쇄). 선형 스택(A→B→C→main) 머지 시: ①맨 아래부터 머지하되 ②다음 PR의 base를 main으로 **먼저** `gh pr edit N --base main` 재타겟한 뒤 아래 브랜치 삭제. 닫힌 PR은 같은 head로 새 PR 재생성해 복구. 또 `gh`는 **cwd의 git remote**로 repo를 판단 → 다른 repo(오케스트레이터 폴더)에서 실행하면 엉뚱한 repo를 봄, `--repo OWNER/NAME` 명시가 안전.
+
+## 링크 존재 검증은 쿼리/프래그먼트 허용해야 (webtool-e2, 260712)
+이중언어(EN/KO) 페이지의 내부 링크가 `?lang=en`/`?lang=ko` 쿼리를 달고 있어, orchestrator의 크로스링크 검증기가 정확일치(`/guide/nutrition/`)로 보면 **거짓 FAIL**을 낸다. 링크 존재/깨짐 검증 시 href에서 `[?#].*` 제거 후 매칭할 것. 워커 자기보고(3/3)를 실측이 뒤집는 듯 보였으나, 실제는 검증기 결함 → 재검으로 PASS 확정. 교훈: 워커 주장과 검증이 충돌하면 검증기 자체를 먼저 의심(never-trust 양방향).
+
+## [2026-07-15] [responsive-verify-cdp]
+반응형(모바일) 오버플로우 검증에 headless Chrome `--window-size=390` **스크린샷은 신뢰하지 마라** — 진짜 디바이스 에뮬레이션이 아니라 넓은 레이아웃 뷰포트로 렌더 후 크롭돼 "콘텐츠 우측 잘림" 아티팩트를 만든다(실측: 미디어쿼리는 적용되나 콘텐츠가 잘려 보임). 진짜 판정은 **CDP `Emulation.setDeviceMetricsOverride({width, mobile:true, deviceScaleFactor:2})` 후 `Runtime.evaluate`로 `documentElement.scrollWidth` vs `clientWidth` + 오버플로우 요소 나열**, 스크린샷도 CDP `Page.captureScreenshot`로. node25 global WebSocket로 의존성 0 CDP 클라이언트 작성 가능(scratchpad measure.mjs/shot.mjs 참고).
+**근거**: noi-works-home-design 웨이브에서 --window-size 스샷이 모바일 오버플로우를 오탐→box-sizing 등 헛수정. CDP 실측(vw390·docSW390·offenders[])으로 오버플로우 부재 확정, codex-critic 코드판정이 옳았음을 검증. 브라우저 확장(claude-in-chrome) 탭그룹 반복 소실로 대체 경로 필요했던 정황도 동일 결론.
+**worker**: orchestrator(라이브 검증), claude-main=general-purpose(빌드), codex-critic(코드비평), gemini=agy(시각비평)

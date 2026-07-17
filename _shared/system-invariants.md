@@ -22,6 +22,7 @@
 | INV12 | 카파시 4원칙: CLAUDE.md에 "운영 원칙 (Operating Principles)" 섹션 존재, _templates/worker-brief.md에 "Worker 행동 규약" 고정 블록 존재, **블록 안에 사용자질문 지시(질문/ask) 없음**, worker-result.md 체크리스트에 표면화 항목 존재 | D8 위반 — 층별 적용 붕괴(워커 one-shot 구조와 모순) 또는 워커 규약 유실 |
 | INV13 | approval-policy.md 에 "원격 승인 알림" 절 존재 + `best-effort`/폴백 표현 있음(하드게이트로 변질 아님) | D9 위반 — 알림이 작업을 막는 하드 의존이 되거나 절 유실 |
 | INV14 | autonomy-policy.md에 소비스 티어(AUTO/HARD-STOP)·PR 체크포인트·linear 기본/병렬=독립섬 절 존재 + design-basis §2 권위순위에 autonomy-policy 포함 | D10 위반 — 스텝단위 게이트 회귀/무제한 병렬/권위 슬롯 유실 |
+| INV15 | **정본 소유 분리**: routing.md에 호출 기전 값(`sandbox:`/`approval-policy:`/`call_type:`/`args_template:`)의 **재기술이 없음**(포인터·효과 설명은 허용) + backends.json의 codex-main이 `workspace-write`(역할=산출물 작성과 정합) + codex-critic이 `read-only` | D11 위반 — 값 이중화가 조용히 갈라짐. 2026-07-17 실증: backends `read-only` ↔ routing `workspace-write`가 디스패처 `die` 뒤에 무증상 잠복 |
 
 > ※ **매뉴얼(외부 repo) 비교 항목은 유지보수자 전용(optional)**. 공개 설치본에는 매뉴얼이 없으므로 핵심 점검(INV1–4·6–14)은 시스템 파일 자체 일관성만 본다. INV5와 각 INV의 매뉴얼 측 일치 검사, INV12e/f의 3 flavor 교차 점검은 아래 스크립트의 optional 블록에서 해당 자산이 있을 때만 실행된다.
 
@@ -95,6 +96,14 @@ grep -n 'PR = 체크포인트\|PR 체크포인트' "$ROOT/_shared/autonomy-polic
 grep -c 'linear' "$ROOT/_shared/autonomy-policy.md"
 echo "INV14b 권위순위에 autonomy-policy 포함 (design-basis §2; 존재해야 PASS)"
 grep -n 'autonomy-policy.md`* >' "$ROOT/_shared/design-basis.md" || grep -n 'autonomy-policy' "$ROOT/_shared/design-basis.md" | head -1
+
+echo "INV15a routing.md 호출기전 값 재기술 (D11 — 출력 없어야 PASS)"
+grep -nE '^\s*-\s*`(sandbox|approval-policy|call_type|args_template)`\s*:' "$ROOT/_shared/routing.md" || echo " (재기술 없음 = PASS)"
+echo "INV15b backends codex-main = workspace-write / codex-critic = read-only (둘 다 나와야 PASS)"
+jq -r '.workers["codex-main"].mcp.args_template.sandbox   | select(. == "workspace-write") | " codex-main workspace-write PASS"' "$ROOT/_shared/backends.json"
+jq -r '.workers["codex-critic"].mcp.args_template.sandbox | select(. == "read-only")      | " codex-critic read-only PASS"'      "$ROOT/_shared/backends.json"
+echo "INV15c D11 절 존재 (design-basis; 존재해야 PASS)"
+grep -n 'D11 정본 소유 규칙' "$ROOT/_shared/design-basis.md"
 
 # ── 유지보수자 전용 (optional): 3 flavor 교차 점검 (generator templates 있을 때만) ──
 TPL="$ROOT/plugins/multi-agent-starter/skills/configure-multiagent/generator/templates"
