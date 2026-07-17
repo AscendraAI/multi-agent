@@ -113,3 +113,19 @@
 **측정 도구의 판정 근거는 ground truth 하나로 좁혀라.** M1 오버플로우 판정에 `documentElement.scrollWidth`와 `getBoundingClientRect` 기반 offender 목록을 OR로 묶었더니, 부모 `overflow:hidden`에 클립된 장식요소가 정상 UI를 반려시켰다. rect는 부모 클립을 모른다 → scrollWidth만 판정, offender는 진단정보로 강등.
 **자가점검 스크립트는 일부러 깨서 검증하라.** INV15 초판은 정규식이 `` - `sandbox`: `` 표기만 잡아 `**sandbox**:`·표·산문을 놓쳤고, `jq select`는 값이 틀려도 exit 0이라 false-PASS였다. "PASS 문자열이 보이는지 사람이 눈으로" 확인하는 점검은 점검이 아니다.
 **worker**: claude-main(목적1 리서치·목적2 설계), gemini=agy(제3자 디자인 진단), codex-critic(적대적 비평 2회 — 리서치안 4건 반려 + 구현 NO-GO 5건). orchestrator(실측·구현·자기정정 3회)
+
+## [2026-07-17] [parallel-session-collision]
+사용자가 **다른 세션에서 같은 repo 작업트리에 실시간 커밋 중**일 때 내가 그 브랜치에 git 수술(cherry-pick·amend)을 하면 충돌한다. 실제: fueling-db-schema에 피트니스(#20)·CP토글(#21)을 cherry-pick하는 사이 사용자가 병행 커밋(368ee9f→c37ec98→e623069)을 쌓았고, 내 `git commit --amend`가 **엉뚱하게 사용자의 최신 커밋(e623069)을 amend**해버림(HEAD가 그새 이동). 다행히 내용 유실은 없었으나(내 index.tsx 수정이 사용자 커밋에 흡수) 남의 커밋 해시를 재작성한 셈 → 위험. 또 cherry-pick 충돌 블록을 **전부 grep 안 하고** 하나만 고쳐 마커째 커밋(f56f120에 마커 3줄 잔존)하는 실수도 겹침.
+**교훈**: (1) 공유 작업트리 브랜치에 수술 전 "지금 다른 세션에서 작업 중인지" 먼저 확인하고, 병행 중이면 **격리 worktree로만** 하거나 사용자에게 그 세션 중단을 요청. (2) `--amend`/`reset`처럼 HEAD 재작성 명령은 병행 세션에선 특히 금물(HEAD가 내 밑에서 이동). (3) cherry-pick/merge 충돌 해결 시 반드시 `grep -c '^<<<<<<<'`로 **전체 블록 수**를 세고 다 해결했는지 커밋 전 재검(`git show HEAD:file | grep -c 마커`). backup ref도 최신 HEAD로(내가 85a2d57로 스테일하게 잡음).
+**부수(네이티브 dep)**: 사용자가 react-native-webview 추가 → 기존 dev build엔 `RNCWebViewModule` 없음 → `TurboModuleRegistry.getEnforcing` Invariant Violation 크래시(+ErrorBoundary/default-export 연쇄). JS만 바뀌면 리로드, **새 네이티브 모듈이면 `expo run:ios --device` 재빌드 필수**. 판별: Metro 로그의 `could not be found ... registered in the native binary`.
+**worker**: orchestrator 단독(실기기·git)
+
+## [2026-07-17] [clipper-rebrand]
+**문자열 인벤토리 DoD에 `grep -I`를 쓰면 바이너리 메타데이터를 통째로 놓친다.** D1("브랜드 참조 0건")을 codex-main도 orchestrator도 `grep -rIiE`로 측정해 **양쪽 다 "529→0 PASS"라는 동일한 오판**에 도달했다. 실제로는 PNG 6개 XMP에 `<pdf:Author>Timjipraks</pdf:Author>`가 살아 있었고, codex-critic이 잡았다. 핵심은 도구가 아니라 구조다 — **공유 맹점은 자기검증으로 못 깬다**. 검증자가 검증 대상과 같은 방법을 쓰면 독립성이 0이다. 리브랜딩·시크릿 스캔류 DoD는 `grep -a`(바이너리 포함)를 명시하고, 검증자에게는 *다른 방법*을 지시할 것.
+**갓 생성된 repo의 첫 스냅샷을 결론으로 쓰지 마라.** "README 1개뿐인 빈 껍데기"라고 사용자에게 보고했으나, 8분 뒤 `Add files via upload`로 100파일이 들어왔다(내 조회가 그 사이였음). 생성 직후 repo는 *채워지는 중*일 수 있다. 사용자의 "다시 확인해줘" 3회가 없었으면 오보가 그대로 굳었다 — **사용자가 같은 요청을 반복하면 내 관측이 틀렸을 확률을 먼저 의심**할 것.
+**시크릿 스테이징 가드가 삭제를 유출로 오탐한다.** `git status | grep -iE 'cookies'`가 **삭제되는 문서**(`COOKIES.md`)에 매칭돼 2회 연속 false "LEAK ✗". 파일명 매칭은 (1)`--diff-filter=d`로 삭제 제외 (2)`grep -x` 정확일치 (3)내용 기반. 오탐 가드는 진짜 유출 때 무시하게 만들어 더 위험하다.
+**DoD를 실패했을 때 DoD를 고치는 선택지는 반드시 사용자에게 올려라.** PNG 메타데이터가 D1에 걸렸을 때 "저작자 메타데이터는 예외로 하자"는 기술적으로 타당했으나 **내가 세운 기준을 실패 후 내가 완화하는 것**이었다. 골대 이동임을 명시하고 3안(제거/예외/자산교체)으로 올렸더니 사용자는 내 추천(예외)이 아니라 **교체**를 골랐다 — 삭제도 완화도 아닌 길이 있었다. 자기 기준을 자기가 못 고치게 하는 게 요점.
+**brief의 지시와 sandbox 설정은 정합해야 한다.** codex-critic에 `sandbox=read-only`를 주고 brief엔 "result.md 작성"을 지시 → 워커가 판정을 내고도 기록하지 못해 `patch rejected`. CLAUDE.md상 codex-critic=`write_scope: none`(Orchestrator 경유)이 정본이므로 **brief에서 쓰기 지시를 빼는 게** 맞다.
+**MIT 리브랜딩의 실제 관문은 라이선스가 아니라 인프라 탯줄이다.** LICENSE 병기는 5분이면 끝났고, 실제 작업량은 원저자 폰홈(`api.ytclip.org` 업데이트 체크)·유료 API 프로바이더·수익화 훅 3종 제거였다. "이름 바꾸기"로 접근하면 남의 서버를 계속 호출하는 앱이 우리 브랜드로 나간다.
+**부수(환경)**: CustomTkinter GUI 앱 검증엔 **tkinter 포함 Python**이 필요한데 pyenv 빌드는 기본적으로 `_tkinter` 없이 만들어진다(3.11.13 실측). `brew install python-tk@3.11`로 해소. GUI 기동 검증은 `App(); a.after(3000, a.destroy); a.mainloop()` 하네스로 자동 종료 가능 — 창 구성 단계에서 깨진 import·자산 경로가 전부 드러난다. `screencapture -R`은 화면 기록 권한 없으면 `could not create image from rect`로 실패(육안 검증은 사람 게이트로).
+**worker**: codex-main(리브랜딩 구현·D2 미완료를 정직하게 표면화), codex-critic(적대적 리뷰 — NO-GO 1건, 양측 공유 맹점 적발). orchestrator(LICENSE·NOTICE·.gitignore·아이콘 6종 자체제작·D2 실측·자기정정 1회)
