@@ -32,8 +32,8 @@
 
 ## 2. 권위 우선순위 (Context Clash 해소 규칙)
 
-`CLAUDE.md` > `_shared/routing.md`·`approval-policy.md`·`orchestrator-rules.md` > 외부 매뉴얼(multi-agent-manual.txt).
-충돌 발견 시 낮은 쪽을 높은 쪽에 맞추고 log.md에 남긴다. 매뉴얼은 항상 시스템 권위문서에 종속.
+`CLAUDE.md` > `_shared/autonomy-policy.md` > `_shared/routing.md`·`approval-policy.md`·`orchestrator-rules.md` > 외부 매뉴얼(multi-agent-manual.txt).
+충돌 발견 시 낮은 쪽을 높은 쪽에 맞추고 log.md에 남긴다. 매뉴얼은 항상 시스템 권위문서에 종속. autonomy-policy는 승인·게이팅의 상위 운용 규칙(D10)이나, orchestrator-rules의 구조 불변식(§1 인터랙티브 전용·D5)은 그대로 준수한다.
 
 ## 3. 이미 내린 결정 (재논의 금지, 뒤집으려면 근거 갱신)
 
@@ -48,6 +48,8 @@
 - **D8 카파시 4원칙 층별 적용** = 오케스트레이터 지침(CLAUDE.md "운영 원칙 (Operating Principles)" 섹션) 풀버전 verbatim 차용(도입 tradeoff·말미 성공지표 포함) / 워커층 유일 정본은 `_templates/worker-brief.md`의 "Worker 행동 규약" 고정 블록 — ②단순함·③외과수술식 그대로 + ①추측전질문은 **번역형**(워커는 one-shot/headless라 사용자 질문 채널 없음 → 가정 명시·불확실/불일치를 result.md Issues/Caveats에 표면화) / ④목표기반 loop은 오케스트레이터 전용(Verification Checklist 루프와 결합). 워커 brief·agent 정의에 "사용자에게 질문" 지시 금지, agent 정의에 규약 중복 금지(brief가 모든 워커에 닿는 유일 운반체 — call_worker.sh가 brief를 통째로 전달). 기존 D와 무충돌·동방향 보강(②=최소 worker set·토큰경제, ③=write_scope 4조건, ④=never-trust-upstream 검증, D6 구조 불변). 출처: multica-ai/andrej-karpathy-skills — MIT는 README·plugin.json 선언 기준이며 상류에 LICENSE 파일 없음(2026-06-10 확인), 재배포 표기는 `NOTICE` 정본. (2026-06-10, tasks/karpathy-wiki-upgrade/)
 
 - **D9** 승인 게이트 원격 알림 = 승인 요청 시점에 Slack DM(`slack_send_message`) + 폰 푸시(`PushNotification`) 병행 + `ScheduleWakeup` 폴링으로 원격 답장을 승인 채널로 수용. **best-effort 보조 채널이지 하드 게이트 아님** — Slack/MCP 미가용 시 알림 스킵하고 터미널 승인으로 폴백(알림 실패가 진행을 막지 않음). file-as-memory 유지(관제실 채널 ID는 approval-policy.md에 파일로 박음, 런타임 상태 0), 인터랙티브 전용(D5)과 일관(폴링은 세션 생존 시만), worker pool·역할·worker간 무통신 불변(사람 승인 단계에만 개입 — D6 무영향). 정본은 approval-policy.md "원격 승인 알림" 절. (2026-07-06, 라운드트립 실증 채널 D0AQX2WBZS7)
+
+- **D10** 자율 실행 정책 채택 = `_shared/autonomy-policy.md`(근거 AI개발운영규격 v2, 260707) 전면 채택. 승인 단위를 스텝→**결과 위험도 티어**(AUTO 무프롬프트 / HARD-STOP 6트리거)로 전환, 승인은 **웨이브 1회 배치**, 사람 게이트는 **PR/diff 리뷰 하나**. 권위: CLAUDE.md > autonomy-policy > routing/approval/orchestrator-rules(§2). 기존과의 정합 결정(2026-07-07 사용자 승인): (a) **worktree** — D5/INV8은 *오케스트레이터 세션* 한정 금지로 정밀화, **워커의 target_repo 병렬 worktree는 허용**(autonomy §6; 오케스트레이터는 인터랙티브·file-as-memory 유지라 D5 취지 불변). (b) **PR 체크포인트** — 대상 repo에 remote 없으면 §2 auto-push/PR을 **로컬 작업명 브랜치 커밋 + 오케스트레이터 diff 제시 리뷰**로 대체(push·PR은 remote 생기면 원문대로). (c) HARD-STOP 트리거(외부쓰기·비가역·시크릿·범위급증)는 하드 안전규칙과 동방향 — 자율은 AUTO 티어(가역·write_scope 내)에만 적용. 정본은 autonomy-policy.md, 불변식 INV14 신설.
 
 ## 4. 불변식
 

@@ -88,3 +88,5 @@
 "pro-high 쓰지 마라"(D4/INV9) 같은 **환경 한계발 금지 규칙**은 그 환경(백엔드)이 바뀌면 근거가 사라진다. pro-high 제외 사유는 옛 antigravity-claude-proxy의 `400 INVALID_ARGUMENT`였는데, 백엔드를 `agy` CLI로 바꾸니 pro-high가 정상 작동(spike 실증). → 금지 규칙엔 **"무엇 때문에 금지인지(원인 계층)"를 함께 적어야**, 원인이 사라졌을 때 안전하게 해제할 수 있다. 또 모델 셀렉션이 도구마다 다름을 확인: agy는 모델이 **전역·계정단위**(`/model`)라 per-call 핀 불가 → worker별 다른 모델 동시 사용은 안 되고, gemini 전용 전역을 pro-high로 고정해 운용. 마이그레이션은 D4·INV9·INV10·routing·validate C6를 **한 묶음으로** 갱신해야 내부 모순(validate가 새 정본을 FAIL)이 안 생긴다.
 **근거**: agy spike S1 GREEN + 3자 검수(codex #8이 "옛 정책과 충돌" 지적 → 검증하니 정책을 갱신해야 하는 것이었음). backends.json이 gemini 호출 정본, mcp__gemini-pro__/mcp__gemini__ 브리지 폐기.
 **worker**: orchestrator(마이그레이션·라이브 편집), codex-critic+gemini=agy(검수)
+
+- [2026-07-09] **HARD-STOP은 Slack 병행 발사가 필수 실행단계**: AskUserQuestion(터미널)만으로 끝내면 정책 위반(2026-07-09 실제 누락). 매 HARD-STOP에 `slack_send_message(C0BGH4K5LL8, 질문)` + `_shared/adapters/notify.sh "요약"`(loud ping) 둘 다 쏜 뒤 답장 수용(터미널·Slack 무관). 인프라는 검증됨(webhook→채널 도착, MCP 읽기 정상) — 유일 실패모드는 "안 쏘는 것". 정본 approval-policy.md §원격승인알림.

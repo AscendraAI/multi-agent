@@ -13,6 +13,8 @@ MultiAgent Orchestrator는 인터랙티브 Claude Code 세션에서만 실행한
 
 → 즉시 거부하고 사용자에게 "인터랙티브 세션에서 다시 시작해주세요" 안내. 백그라운드 harness는 EnterWorktree를 강제하므로 본체 `tasks/` 경로에 직접 쓸 수 없고, MultiAgent의 file-as-memory 원칙(mat을 비롯한 외부 도구가 본체를 읽음)과 충돌한다.
 
+**worktree 금지의 적용 범위 (D10 정밀화)**: 위 금지는 **오케스트레이터 세션 자체**에 한한다(오케스트레이터는 본체 `tasks/`에 file-as-memory를 써야 하므로 인터랙티브 전용). **워커**(codex-main 등)가 `target_repo`에서 병렬 격리를 위해 worktree를 쓰는 것은 허용된다(autonomy-policy §6 "독립 섬" 병렬, 1브랜치=1워커, 동시 ≤3–4). 워커 worktree는 외부 repo의 작업 격리일 뿐 오케스트레이터의 tasks/ 메모리와 무관하다.
+
 ---
 
 ## 2. 시스템 수정·검증 프로토콜

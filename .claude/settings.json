@@ -1,4 +1,5 @@
 {
+  "skipDangerousModePermissionPrompt": true,
   "hooks": {
     "Stop": [
       {
@@ -9,6 +10,47 @@
           }
         ]
       }
+    ]
+  },
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(date:*)",
+      "Bash(echo:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(tsc:*)",
+      "Bash(pnpm:*)",
+      "Bash(npx:*)",
+      "Bash(supabase:*)",
+      "Bash(_shared/adapters/notify.sh:*)"
+    ],
+    "ask": [
+      "Bash(rm:*)",
+      "Bash(git push:*)",
+      "Bash(git reset:*)",
+      "Bash(git clean:*)"
+    ],
+    "additionalDirectories": [
+      "/Users/noi/raceplanner"
     ]
   }
 }

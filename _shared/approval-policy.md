@@ -1,5 +1,7 @@
 # Worker Approval Policy
 
+> **상위 규칙**: `_shared/autonomy-policy.md`(D10)가 승인 게이팅의 정본 상위 규칙이다 — 승인 단위는 스텝이 아니라 **웨이브(task) 1회 배치**(AUTO 무프롬프트 / HARD-STOP만 대기), 사람 게이트는 PR/diff 리뷰. 아래 절차는 그 승인의 **기록·형식 규약**(workers_approved·[APPROVAL])이며 autonomy-policy와 정합되게 유지한다.
+
 ## 원칙
 
 **모든 worker 호출은 작업별로 명시적 승인 필요** (claude-main 포함 전체 pool 적용).  
@@ -27,7 +29,7 @@
 3. `ScheduleWakeup` — 관제실 DM 폴링으로 답장 대기(활성 ~60–240s 캐시 유지 구간 / 유휴 1200s+). 폴링은 **인터랙티브 세션 생존 시에만** 동작(D5 일관)
 4. 답장 수신 → 승인/수정으로 파싱 → `task.md` `workers_approved` 갱신 + `log.md` `[APPROVAL]` 기록. 승인 채널(터미널·Slack) 무관하게 기록 형식 동일
 
-**관제실 채널**: 셀프 DM `D0AQX2WBZS7` (Slack user `U0AR027F953`). 다른 채널로 옮기려면 이 값만 교체.
+**관제실 채널**: 전용 비공개 채널 `C0BGH4K5LL8` (`#claude-orchestrator`). 다른 채널로 옮기려면 이 값만 교체. Slack은 사용자 명의라 *자기 메시지* 알림이 없으므로 **실제 loud 알림은 폰 푸시(PushNotification)**가 담당하고, Slack은 질문 게시·답장 읽기용이다(autonomy-policy §3).
 
 외부 repo 쓰기 4조건(brief `target_repo`·`write_scope`, `task.md` 승인, `log.md` `[APPROVAL]`)은 이 알림과 무관하게 그대로 필수.
 
