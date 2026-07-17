@@ -10,9 +10,23 @@
 
 ## KI-2 — `write_scope`가 산문으로만 강제된다 (bypassPermissions 하에서 기계적 경계 0)
 
-- **상태**: 열림 / **조사 중** (`tasks/multiagent-v2-build/` W2)
-- **심각도**: 높음 — 정책 위반이 **아무 저항 없이 통과**한다. 사고 이력은 없으나 방어선이 문서 한 장뿐.
-- **재현**: 항상.
+- **상태**: ✅ **해소** (claude-main 한정) — `_shared/adapters/worker_write_guard.sh` + agent frontmatter 훅. 2026-07-17, `tasks/multiagent-v2-build/` W2
+- **심각도**: (해소 전) 높음 — 정책 위반이 **아무 저항 없이 통과**했다.
+
+### 해소 내용
+
+`.claude/agents/claude-main.md` frontmatter에 `hooks: PreToolUse (matcher: Write|Edit|NotebookEdit|Bash)`로 가드를 부착. 실측 근거 2건:
+
+1. **PreToolUse `permissionDecision: "deny"`는 `bypassPermissions`를 이긴다** — 격리 probe로 확정(deny 케이스 파일 미생성, 대조군 정상 생성). 그간 문서 주장만 있고 아무도 확인하지 않던 미지수.
+2. **PreToolUse 입력엔 `agent_type`이 없다**(실측: `session_id`·`cwd`·`permission_mode`·`tool_name`·`tool_input`·`tool_use_id`만). 워커/오케 구분은 훅을 **agent 정의에 부착**해 해결.
+
+E2E 실측: 프롬프트에 "이 호출에 한해 write_scope 승인됨"이라 써넣어도 **차단**됨 — 가드가 프롬프트가 아니라 역할로 강제한다.
+
+**남은 한계** (정직하게): 난독화된 쓰기(`eval`·base64·`python -c`)는 못 잡는다. 사고 방지이지 적대적 샌드박스가 아니다. 진짜 격리는 sandbox 백엔드(codex-main 경로) 소관.
+
+**운영 유의**: agent frontmatter는 **세션 시작 시 로드** — 가드는 새 세션부터 유효하다.
+
+### (이하 해소 전 기록 — 재발 시 참조)
 
 ### 증상
 

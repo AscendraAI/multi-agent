@@ -7,6 +7,8 @@
 │
 ├── 메인 코딩 / 디버깅 / 기획 · 설계 · 요구사항 · 전략 · 문서화?
 │   └── claude-main
+│       └── 산출물에 사람이 보는 UI 표면이 있나? (웹페이지·앱화면·랜딩·차트)
+│           └── YES → claude-main [design mode]  — 아래 "디자인 모드" 절
 │
 ├── claude-main 산출물 리뷰 / 비판적 검증?
 │   └── codex-critic   (Codex의 주된 역할)
@@ -20,6 +22,34 @@
 └── 판단 어려움?
     └── claude-main으로 시작 후 필요 시 추가
 ```
+
+## 디자인 모드 (claude-main [design mode])
+
+산출물에 **사람이 보는 UI 표면**(웹페이지·앱화면·랜딩·차트)이 있을 때. 워커 추가 아님 — claude-main의 명시적 모드다.
+
+**왜 있나**: 디자인이 1급 관심사인데 시스템에 그 역할이 없었다. 실증(2026-07-15 `noi-works-home-design`) — `frontend-design` 스킬 미로드 + 빌더가 general-purpose 대체 → 산출물 평가가 "프리미엄보다 개발용 스타터 템플릿". 스킬은 설치돼 있었으나 **규칙이 아니라 그때그때 재량**으로 쓰였다.
+
+**brief 추가 필드** (인라인 금지 — 경로만):
+```yaml
+design_mode: true
+skill: frontend-design            # 차트·대시보드면 dataviz 병기
+design_contract: tasks/<task>/design-contract.md
+```
+
+**게이트**:
+
+| 게이트 | 실행자 | 성격 | 판정 |
+|---|---|---|---|
+| **G0-M1 오버플로우** | orchestrator (무모델, `_shared/tools/design-measure.mjs`) | **blocking** | 390·1440에서 `scrollWidth == clientWidth`, offenders 0 |
+| G0-기타 (대비·탭타겟·타입스케일·토큰) | 동상 | **warn-only** | 임계값 근거 미확립 → 관측만. blocking 승격은 실측 3건 후 |
+| G1 코드 | codex-critic | blocking | 현행과 동일 (계약 불변·회귀·write_scope) |
+| G2 시각 | gemini | **판정 보류** | 비전의 blocking 적합성은 **미시험**. 쓰려면 advisory로 — 지적 목록만 받고 orchestrator가 `write_scope ∩ DoD` 교집합만 채택 |
+
+**강제 아님 — 권장이다.** 게이트 전량 강제는 웨이브당 워커 호출을 1→3으로 늘려 최소 worker set(아래 §복합 작업 우선순위 2)과 autonomy-policy §1 HARD-STOP ⑤(비용 2배↑)에 저촉된다. 필요한 게이트만 고른다.
+
+**주의 — 미검증 전제**: "제약을 늘리면 디자인 품질이 오른다"는 상관이 아직 실증되지 않았다(codex-critic 2026-07-17). 스킬 로드만으로 해결되지도 않는다(2026-07-17 `noi-works-home-chatfirst`는 스킬을 쓰고도 재작업 필요). 이 절은 **실험적**이며 실측 3건 후 재평가한다.
+
+**제네릭 판정의 상한**: 완전 정량화는 불가능하다. 3층으로 나눈다 — ①명백한 마커(제네릭 폰트·white+purple 그라디언트)는 grep으로 셀 수 있다 ②회색지대("스타터 템플릿 같다")는 숫자로 못 만든다 → 조언으로 남긴다 ③최종심은 사람(PR diff + 390·1440 스샷 2장 첨부). ②를 blocking으로 승격시키지 말 것.
 
 ## 복합 작업 우선순위
 
