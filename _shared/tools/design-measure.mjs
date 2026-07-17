@@ -37,6 +37,20 @@ if (!url) {
 const MEASURE = `(() => {
   const de = document.documentElement;
   const vw = de.clientWidth;
+  // 판정 = "넘치는가"가 아니라 **"넘쳐서 사용자가 가로로 스크롤하게 되는가"**.
+  // scrollWidth > clientWidth만 보면 오탐한다: html/body에 overflow-x:hidden|clip이 걸리면
+  // 콘텐츠는 넘치되 **클립되어 사용자 영향이 0인데도** scrollWidth는 계속 커진다.
+  // (실측 2026-07-17 noi-works: sw 478 / cw 390 / html overflow-x:hidden → 스크롤 불가 = 결함 아님.
+  //  .glow는 inset -30%로 의도적으로 번지는 aria-hidden 장식이다.)
+  //
+  // 실제 스크롤 시도(window.scrollTo)는 **헤드리스 에뮬레이션에서 동작하지 않는다** — 진짜
+  // 오버플로우 페이지조차 scrollLeft가 0으로 나온다(실측). 그래서 CSS 전파 규칙으로 실효값을 구한다:
+  // html의 overflow가 visible이 아니면 그것이 뷰포트를 지배하고, visible이면 body의 것이 전파된다.
+  const htmlOX = getComputedStyle(de).overflowX;
+  const bodyOX = getComputedStyle(document.body).overflowX;
+  const effectiveOX = htmlOX !== 'visible' ? htmlOX : bodyOX;
+  const clipped = effectiveOX === 'hidden' || effectiveOX === 'clip';
+  const canScrollX = de.scrollWidth > de.clientWidth && !clipped;
   const offenders = [];
   for (const el of document.querySelectorAll('*')) {
     const r = el.getBoundingClientRect();
@@ -70,7 +84,11 @@ const MEASURE = `(() => {
     viewportWidth: vw,
     scrollWidth: de.scrollWidth,
     clientWidth: de.clientWidth,
-    overflow: de.scrollWidth > de.clientWidth,
+    canScrollX,                                                       // ← 판정 근거
+    clippedOverflow: de.scrollWidth > de.clientWidth && clipped,      // 넘치나 클립됨 = 결함 아님
+    effectiveOverflowX: effectiveOX,
+    htmlOverflowX: htmlOX,
+    bodyOverflowX: bodyOX,
     offenders,
     uniqueFontSizes: sizes.size,
     fontFamilies: [...fonts].slice(0, 10),
@@ -141,20 +159,23 @@ try {
   const m1Failures = [];
   const warnings = [];
   for (const [w, m] of Object.entries(per)) {
-    // 판정은 documentElement.scrollWidth 하나로만 한다.
-    // offenders는 *진단 정보*이지 판정 근거가 아니다 — getBoundingClientRect는 부모의
-    // overflow:hidden/clip을 모르므로, 클립된 장식 요소·의도적 off-canvas를 오탐한다
-    // (scrollWidth == clientWidth인데 offenders > 0인 상태가 정상적으로 존재한다).
-    // 근거 없는 오탐으로 정상 UI를 반려하지 않기 위함 (codex-critic 2026-07-17).
-    if (m.overflow) {
+    // 판정은 **사용자가 실제로 가로 스크롤 할 수 있는가**(canScrollX) 하나로만 한다.
+    // scrollWidth도 offenders도 판정 근거가 아니다 — 둘 다 클립된 콘텐츠를 오탐한다:
+    //  - scrollWidth: html/body에 overflow-x:hidden|clip이면 넘쳐도 사용자 영향 0인데 계속 커진다
+    //  - offenders(getBoundingClientRect): 부모의 overflow:hidden/clip을 모른다
+    // 둘은 *진단 정보*로만 싣는다. 근거 없는 오탐으로 정상 UI를 반려하지 않기 위함.
+    // (codex-critic 2026-07-17 + noi-works 실측 — 의도적으로 번지는 장식 glow를 결함으로 오판)
+    if (m.canScrollX) {
       m1Failures.push({
         width: Number(w),
         scrollWidth: m.scrollWidth,
         clientWidth: m.clientWidth,
         suspects: m.offenders, // 진단용 — 부모 클립 미고려. 범인 후보일 뿐 확정 아님
       });
+    } else if (m.clippedOverflow) {
+      warnings.push(`[${w}] 콘텐츠가 뷰포트를 넘치나 클립되어 스크롤 불가(html:${m.htmlOverflowX}/body:${m.bodyOverflowX}) — **결함 아님**. 의도된 블리드일 수 있음. 진단 참고: ${m.offenders.slice(0, 2).map((o) => o.tag + (o.cls ? '.' + o.cls.split(' ')[0] : '')).join(', ') || '없음'}`);
     } else if (m.offenders.length > 0) {
-      warnings.push(`[${w}] 뷰포트 밖 요소 ${m.offenders.length}개이나 문서 오버플로우 없음(부모가 클립 중) — 판정 아님, 진단 참고: ${m.offenders.slice(0, 2).map((o) => o.tag + (o.cls ? '.' + o.cls.split(' ')[0] : '')).join(', ')}`);
+      warnings.push(`[${w}] 뷰포트 밖 요소 ${m.offenders.length}개이나 부모가 클립 중 — 판정 아님, 진단 참고: ${m.offenders.slice(0, 2).map((o) => o.tag + (o.cls ? '.' + o.cls.split(' ')[0] : '')).join(', ')}`);
     }
     // warn-only: 임계값에 근거가 없다. 관측만 하고 판정하지 않는다.
     if (m.uniqueFontSizes > 6) warnings.push(`[${w}] 고유 font-size ${m.uniqueFontSizes}개 (참고대역 3~6 — 근거 미확립, 판정 아님)`);
