@@ -9,7 +9,7 @@
 공통 주제: **"선언은 있는데 구현이 없다"를 실물로 메운다.**
 
 ### Added
-- **자가점검 자동화 (G7)** — `_shared/tools/self-check.sh`(INV1~15 + 구조위생, **exit code가 판정**) · `selfcheck-hook.sh`(시스템 파일 변경 세션에서만 발동하는 Stop 훅, fail-open 알림) · `.github/workflows/self-check.yml`(PR·main push CI 게이트, 어댑터 실행권한·워커 가드 회귀 18종·추적금지 파일 검사). `system-invariants.md`는 D11에 따라 스크립트 본문 126줄을 포인터로 교체(표=정의, 스크립트=검사). 음성 대조군으로 CI가 깨진 PR을 실제 red 처리함을 실증.
+- **자가점검 자동화 (G7)** — `_shared/tools/self-check.sh`(INV1~16 + 구조위생, **exit code가 판정**) · `selfcheck-hook.sh`(시스템 파일 변경 세션에서만 발동하는 Stop 훅, fail-open 알림) · `.github/workflows/self-check.yml`(어댑터 실행권한·워커 가드 회귀·추적금지 파일 검사). `system-invariants.md`는 D11에 따라 스크립트 본문 126줄을 포인터로 교체(표=정의, 스크립트=검사). 음성 대조군으로 CI가 깨진 PR을 실제 red 처리함을 실증. **main branch protection의 required status check로 지정(2026-07-18)** → CI red면 머지 불가(실제 게이트). INV16(어댑터·가드 무결성, **행동 검사**) 신설.
 - **gemini API 폴백 실구현** — `gemini_api.sh`가 2026-06-02부터 "슬롯만 정의됨" 스텁이라 무조건 exit 4였다(선언≠구현). 실제 Gemini REST(`generateContent`) + **이미지 자동 첨부**(brief 본문의 절대경로를 inline base64로 — agy CLI는 헤드리스에서 `read_file` 권한 자동거부로 이미지를 못 읽는다). 시크릿은 `_local/gemini-api-key`(gitignored, env 우선). agy 쿼터 소진 시 디스패처가 api로 자동 폴백(E2E 확인).
 - **워커 쓰기 커널 제한 (KI-2 2차 완화)** — `worker-sandbox.sb`(seatbelt 프로파일: 읽기·실행 자유, 쓰기만 repo·TMPDIR·/tmp·/dev로 제한) + 가드가 allowlist 통과 명령을 `sandbox-exec`로 래핑. 문자열 검사가 못 잡는 **난독화 쓰기**를 커널이 EPERM으로 차단(E2E: `String.fromCharCode` 우회 실패). 가드에 **fail-closed** EXIT 트랩(크래시·jq부재 시 deny — 그전엔 조용히 통과).
 

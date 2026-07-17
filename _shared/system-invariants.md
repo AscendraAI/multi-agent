@@ -40,7 +40,7 @@ bash _shared/tools/self-check.sh --quiet    # FAIL만 (훅·CI용)
 
 **자동 실행**:
 - **Stop 훅** — 시스템 파일(`_shared/`·`_templates/`·`CLAUDE.md`·`.claude/`)이 변경된 세션에서만 발동. 무관 작업은 no-op(노이즈 억제 — 시끄러우면 무시당한다)
-- **CI** — `.github/workflows/self-check.yml`이 PR에서 실행. D10상 사람 게이트가 PR이므로 **CI가 그 자리의 강제자**다
+- **CI** — `.github/workflows/self-check.yml`이 PR에서 실행. main branch protection의 **required status check**로 지정됨(2026-07-18) → red면 머지 불가. D10상 사람 게이트가 PR이므로 **CI가 그 자리의 강제자**다. (required 지정이 유지될 때 참 — 풀리면 사후 탐지로 격하)
 
 **스크립트를 고쳤으면 일부러 깨서 검증하라.** 각 INV를 하나씩 위반시켜 실제로 exit 1이 나는지 확인한다. 안 그러면 "돌긴 도는데 아무것도 안 잡는" 점검이 된다.
 
