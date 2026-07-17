@@ -1,0 +1,74 @@
+name: self-check
+
+# 왜 CI인가: `_shared/autonomy-policy.md` §5는 "규약이 아니라 CI가 강제자"라 선언했는데,
+# 정작 시스템 자신의 불변식은 orchestrator가 기억할 때만 돌았다(자기모순 — claude-main G7, 2026-07-17).
+# D10상 사람 게이트가 PR이므로, CI가 그 자리에서 강제자가 된다. Stop 훅은 알림(fail-open),
+# 이 워크플로가 실제 게이트다.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  invariants:
+    name: 불변식 (INV1~15)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # main...HEAD 비교용
+
+      - name: jq 확인
+        run: jq --version
+
+      - name: self-check
+        run: bash _shared/tools/self-check.sh
+
+      - name: 어댑터 실행권한 (mode bit 회귀 방지)
+        # 2026-07-17 실증: call_worker.sh가 rw-r--r--라 디스패처 호출이 permission denied로 막혔다.
+        run: |
+          fail=0
+          for f in _shared/adapters/*.sh _shared/tools/*.sh; do
+            if [ ! -x "$f" ]; then echo "::error file=$f::실행권한 없음 (chmod +x 후 커밋)"; fail=1; fi
+          done
+          exit $fail
+
+      - name: 워커 쓰기 가드 회귀
+        # allowlist가 우회되지 않는지. denylist 초판은 python3 -c / node -e / >| / eval 등에 전부 뚫렸다.
+        run: |
+          G=_shared/adapters/worker_write_guard.sh
+          fail=0
+          check() { # $1=기대(deny|allow) $2=command
+            out=$(jq -nc --arg c "$2" '{tool_name:"Bash",tool_input:{command:$c}}' | bash "$G")
+            if echo "$out" | grep -q '"deny"'; then got=deny; else got=allow; fi
+            if [ "$got" != "$1" ]; then echo "::error::가드 회귀 — '$2' → $got (기대 $1)"; fail=1; fi
+          }
+          # 차단돼야
+          check deny 'echo x > f'
+          check deny 'python3 -c "open(1,2)"'
+          check deny 'node -e "x"'
+          check deny 'echo x >| f'
+          check deny '/usr/bin/touch f'
+          check deny 'eval "$(base64 -d <<< x)"'
+          check deny 'curl u -o f'
+          check deny 'rm -rf x'
+          check deny 'git commit -m x'
+          check deny 'cat a | tee b'
+          check deny 'npm install'
+          # 통과돼야 (과차단 = claude-main 역할 파괴)
+          check allow 'pnpm test'
+          check allow 'npx tsc --noEmit'
+          check allow 'grep -rn foo src/'
+          check allow 'git log --oneline -5'
+          check allow 'git diff HEAD'
+          check allow 'pnpm build 2>&1 | tail -20'
+          check allow 'cat a.txt 2>/dev/null | grep x'
+          exit $fail
+
+      - name: .venv·빌드산출물 추적 여부
+        # 2026-07-17 실증: git add -A로 .venv 1,498파일(277,270줄)이 커밋됐다.
+        run: |
+          bad=$(git ls-files | grep -E '^(\.venv/|node_modules/|__pycache__/|dist/)' | head -5 || true)
+          if [ -n "$bad" ]; then echo "::error::추적되면 안 되는 파일: $bad"; exit 1; fi
