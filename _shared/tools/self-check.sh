@@ -134,6 +134,16 @@ for f in call_worker.sh gemini_api.sh notify.sh worker_write_guard.sh; do
     || fail "adapters/$f — 실행권한 없음 (2026-07-17 실증: 디스패처 호출이 막혔다)"
 done
 
+# 선언된 폴백이 실제로 구현돼 있는가 — "선언 있고 구현 없음"이 실증된 결함 유형이다.
+# gemini_api.sh는 2026-06-02~07-17 내내 "슬롯만 정의됨(spike S3 미완)" 스텁이라 무조건 exit 4였다.
+# backends.json은 그동안 api 폴백을 선언하고 있었다 → 거짓 안전감. agy 쿼터 소진 때 실제로 막혔다.
+if grep -q 'slot only\|슬롯만 정의\|미구성' "$ROOT/_shared/adapters/gemini_api.sh" 2>/dev/null \
+   && ! grep -q 'generativelanguage.googleapis.com' "$ROOT/_shared/adapters/gemini_api.sh" 2>/dev/null; then
+  fail "gemini_api.sh — 스텁인데 backends.json이 api 폴백을 선언 중 (선언≠구현)"
+else
+  pass "gemini_api.sh 폴백 실구현"
+fi
+
 # ── 유지보수자 전용 (자산 있을 때만) ──
 TPL="$ROOT/plugins/multi-agent-starter/skills/configure-multiagent/generator/templates"
 if [ -d "$TPL" ]; then
