@@ -158,3 +158,17 @@
 **브라우저 확장이 죽으면 CDP로 직접 몰아라.** claude-in-chrome이 탭그룹 경합·타임아웃으로 반복 실패 → 헤드리스 크롬 `--remote-debugging-port` + WebSocket CDP 직결로 우회해 Expo web 실화면 3장 캡처 성공(`_shared/tools/design-measure.mjs`와 동일 원리). RN web은 body가 아니라 내부 ScrollView가 스크롤하므로 `captureBeyondViewport`가 아니라 스크롤 컨테이너를 찾아 `scrollTop`을 옮겨야 한다.
 **worker**: deep-research 하네스(107 에이전트·5.3M 토큰·확정10/기각15), codex-critic 2회(전략 NO-GO, 글 NO-GO), orchestrator(실측·집계·자기정정 3회)
 **"안 먹었다"는 판정도 검증 대상이다.** BlogPost.astro에 이미지 CSS를 넣고 실측했더니 computed `max-height: none`이라 "규칙이 안 붙는다"고 오판하고 셀렉터·스코프를 파기 시작했다. 실제로는 `http-server`가 캐시한 옛 HTML을 재고 있었고 규칙은 처음부터 정확했다(`-c-1`로 캐시 끄니 즉시 적용). **측정이 부정 결과를 내면 대상보다 계측기를 먼저 의심하라.** 같은 세션에서 낸 4번째 자기오류이자, 앞의 3건(grep 오검출·모집단 혼합)과 같은 뿌리 — 한 번의 관측을 결론으로 승격시킨 것.
+
+## [2026-07-17] [worker-sandbox · KI-2 2차완화]
+
+**훅의 기본값은 fail-OPEN이다 — 안전장치가 자기 버그로 사라진다.** PreToolUse에서 **exit 2만 차단**이고 다른 non-zero는 *비차단* 에러다(툴이 그냥 진행). 실측: `ROOT` unbound로 가드가 죽자 **명령이 검사 없이 통과**했다. `ERR` 트랩은 `set -u` 위반을 못 잡고, 트랩을 대입문 뒤에 걸면 그 이전 크래시를 놓친다. ⇒ **`EXIT` 트랩을 스크립트 최상단에** 걸어 "판정을 못 냈으면 차단"을 강제하라. 의존성 실패도 같다 — `jq`가 없으면 tool_name이 빈 문자열이 되어 기본 분기로 떨어져 **allow**됐다. **판정 못 하면 차단**이 원칙.
+
+**문자열 검사는 난독화를 원리적으로 못 잡는다 — 커널을 쓰라.** allowlist 가드가 `node -p`를 놓쳤는데(내 deny 규칙은 `node -e`만), 워커가 `String.fromCharCode`로 `fs`와 `/`를 난독화해 홈에 쓰려 하자 **seatbelt가 EPERM으로 막았다**(E2E 실측). `sandbox-exec -f prof.sb -D REPO=... /bin/bash -c "$(printf %q "$cmd")"` — 훅이 `updatedInput`으로 명령을 **재작성할 수 있다**(실측 확인). 계층 방어: 훅이 의도를 보고, 커널이 결과를 막는다.
+
+**`isolation: worktree`는 gitignored 자산이 있으면 못 쓴다.** 워커 격리에 하네스 네이티브 worktree를 쓰려 했으나, worktree엔 `tasks/`가 없어(gitignored) **워커가 brief 자체를 못 읽는다**. 격리 수단을 고를 때 **워커의 입력이 추적 대상인지 먼저 확인**하라.
+
+**보안 강화가 역할을 죽이면 자충수다.** `write_scope: none`을 문자 그대로 강제하면(전 쓰기 차단) `pnpm test`가 캐시를 못 써 죽고 워커가 자기 코드를 검증하지 못한다 → 틀린 코드를 더 많이 반환. codex-critic이 지적한 *"역할 불변 vs 전 쓰기 차단"* 모순. **repo+tmp만 허용**이 실용적 타협 — 밖은 커널이 막고 워커는 산다. 단 **repo 안 쓰기는 남는다**(커널은 캐시와 소스를 구분 못 함) → KI-2는 여전히 열림. **완화를 해소로 부르지 말 것.**
+
+**zsh는 변수를 단어분할하지 않는다 — 이 세션에서 3번 당했다.** `out=$($CMD)` / `set -- $pair` / `sandbox-exec ... $SBX`가 전부 조용히 오작동했고, 그중 하나는 **깨뜨림 검증 9/9를 가짜 통과**로 만들었다(command-not-found의 exit code를 "탐지"로 오독). bash 스크립트를 zsh에서 테스트할 때는 **함수로 감싸거나 `bash -c`로 명시**하라.
+
+**worker**: claude-main(E2E 가드 프로브 — 자기 한계까지 정직하게 보고), orchestrator(실측·구현·자기정정 2회)
