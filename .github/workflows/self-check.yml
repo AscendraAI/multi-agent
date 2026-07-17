@@ -4,10 +4,10 @@ name: self-check
 # 정작 시스템 자신의 불변식은 orchestrator가 기억할 때만 돌았다(자기모순 — claude-main G7, 2026-07-17).
 # D10상 사람 게이트가 PR이므로, 이 워크플로가 그 자리에서 회귀를 잡는다. Stop 훅은 알림(fail-open).
 #
-# ⚠️ 강제력의 전제: 이 워크플로가 **머지를 실제로 막으려면** GitHub branch protection에서
-#    이 job을 required status check로 지정해야 한다. 그 설정이 없으면(현재 main 미보호,
-#    codex-critic 2026-07-18 확인) CI는 red여도 머지 가능 — "게이트"가 아니라 "사후 탐지"다.
-#    설정은 repo admin 권한 필요 → 운영자 결정 사항.
+# 강제력: 이 job("불변식 (INV1~15)")은 main branch protection의 **required status check**로
+#    지정돼 있다(2026-07-18 설정). red면 머지 불가 = 실제 게이트. enforce_admins=false라
+#    admin은 긴급 시 우회 가능. 보호가 풀리면(required 해제) CI는 사후 탐지로 격하되므로,
+#    "CI가 강제자"는 이 설정이 유지될 때 참이다.
 
 on:
   pull_request:
