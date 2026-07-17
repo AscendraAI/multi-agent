@@ -51,6 +51,13 @@
 
 - **D10** 자율 실행 정책 채택 = `_shared/autonomy-policy.md`(근거 AI개발운영규격 v2, 260707) 전면 채택. 승인 단위를 스텝→**결과 위험도 티어**(AUTO 무프롬프트 / HARD-STOP 6트리거)로 전환, 승인은 **웨이브 1회 배치**, 사람 게이트는 **PR/diff 리뷰 하나**. 권위: CLAUDE.md > autonomy-policy > routing/approval/orchestrator-rules(§2). 기존과의 정합 결정(2026-07-07 사용자 승인): (a) **worktree** — D5/INV8은 *오케스트레이터 세션* 한정 금지로 정밀화, **워커의 target_repo 병렬 worktree는 허용**(autonomy §6; 오케스트레이터는 인터랙티브·file-as-memory 유지라 D5 취지 불변). (b) **PR 체크포인트** — 대상 repo에 remote 없으면 §2 auto-push/PR을 **로컬 작업명 브랜치 커밋 + 오케스트레이터 diff 제시 리뷰**로 대체(push·PR은 remote 생기면 원문대로). (c) HARD-STOP 트리거(외부쓰기·비가역·시크릿·범위급증)는 하드 안전규칙과 동방향 — 자율은 AUTO 티어(가역·write_scope 내)에만 적용. 정본은 autonomy-policy.md, 불변식 INV14 신설.
 
+- **D11 정본 소유 규칙 (사실의 종류별 단일 소유)** = D4가 gemini에 한해 선언한 "backends.json이 정본"을 **전 워커로 일반화**한다.
+  - **호출 기전**(`call_type`·`command`/`tool`·`args_template`·`model`·`timeout`·`sandbox`·`approval-policy`·`cwd_policy`·`fallbacks`) → **`_shared/backends.json`이 유일 정본**. 기계가 읽는 값이며 디스패처·오케스트레이터가 실제로 소비한다.
+  - **역할·선택 정책·토폴로지**(무엇에 쓰는 워커인가, 언제 고르는가, 어떻게 엮는가) → **`_shared/routing.md`가 유일 정본**.
+  - **경계 규칙**: routing.md는 호출 기전 값을 **재기술하지 않는다** — "backends.json 정본" 포인터만 둔다. backends.json은 역할·선택 근거를 담지 않는다.
+  - **적용**: 모순 시 "높은 문서가 이긴다"가 아니라 **"그 종류의 사실을 소유한 파일이 이긴다"**. 단 소유 규칙은 *위치* 규칙이지 "현재 값이 곧 진리"가 아니다 — 소유 파일의 값이 설계 의도와 다르면 값을 고친다.
+  **근거**: 같은 사실을 두 파일이 각자 적으면 조용히 갈라진다. 실증(2026-07-17): `backends.json` codex-main `sandbox: read-only`·`approval-policy: never` ↔ `routing.md` `workspace-write 고정`·`on-failure 권장`. 디스패처가 `native|mcp`를 `die`시켜(`call_worker.sh:61`) 런타임에 안 읽혔기에 **무증상 잠복**했고, 어느 INV도 이 쌍을 검사하지 않았다. 값 이중화는 Context Clash(§1)의 특수형이나, 권위 우선순위(§2)는 **문서 등급**만 정할 뿐 **사실 종류별 소유**를 정하지 않아 이 틈을 못 막았다 — D11이 그 틈을 메운다. D4·D7과 무충돌(D4는 gemini 세부 정책 정본으로 유지, D11은 그 원리의 일반화). 불변식 INV15 신설. (2026-07-17, tasks/multiagent-v2-research/ → tasks/multiagent-v2-build/)
+
 ## 4. 불변식
 
 구체 항목·검증 명령은 `_shared/system-invariants.md`. 시스템 수정 후 그 자가점검을 돌린다.

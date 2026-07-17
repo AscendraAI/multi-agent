@@ -90,3 +90,26 @@
 **worker**: orchestrator(마이그레이션·라이브 편집), codex-critic+gemini=agy(검수)
 
 - [2026-07-09] **HARD-STOP은 Slack 병행 발사가 필수 실행단계**: AskUserQuestion(터미널)만으로 끝내면 정책 위반(2026-07-09 실제 누락). 매 HARD-STOP에 `slack_send_message(C0BGH4K5LL8, 질문)` + `_shared/adapters/notify.sh "요약"`(loud ping) 둘 다 쏜 뒤 답장 수용(터미널·Slack 무관). 인프라는 검증됨(webhook→채널 도착, MCP 읽기 정상) — 유일 실패모드는 "안 쏘는 것". 정본 approval-policy.md §원격승인알림.
+
+- [2026-07-09] **스택 PR 머지: base 브랜치 삭제 전에 종속 PR을 먼저 재타겟하라.** GitHub는 PR의 base 브랜치가 삭제되면 그 PR을 자동 재타겟이 아니라 **CLOSED**(재오픈 불가) 처리한다(gh pr merge --delete-branch 연쇄). 선형 스택(A→B→C→main) 머지 시: ①맨 아래부터 머지하되 ②다음 PR의 base를 main으로 **먼저** `gh pr edit N --base main` 재타겟한 뒤 아래 브랜치 삭제. 닫힌 PR은 같은 head로 새 PR 재생성해 복구. 또 `gh`는 **cwd의 git remote**로 repo를 판단 → 다른 repo(오케스트레이터 폴더)에서 실행하면 엉뚱한 repo를 봄, `--repo OWNER/NAME` 명시가 안전.
+
+## 링크 존재 검증은 쿼리/프래그먼트 허용해야 (webtool-e2, 260712)
+이중언어(EN/KO) 페이지의 내부 링크가 `?lang=en`/`?lang=ko` 쿼리를 달고 있어, orchestrator의 크로스링크 검증기가 정확일치(`/guide/nutrition/`)로 보면 **거짓 FAIL**을 낸다. 링크 존재/깨짐 검증 시 href에서 `[?#].*` 제거 후 매칭할 것. 워커 자기보고(3/3)를 실측이 뒤집는 듯 보였으나, 실제는 검증기 결함 → 재검으로 PASS 확정. 교훈: 워커 주장과 검증이 충돌하면 검증기 자체를 먼저 의심(never-trust 양방향).
+
+## [2026-07-15] [responsive-verify-cdp]
+반응형(모바일) 오버플로우 검증에 headless Chrome `--window-size=390` **스크린샷은 신뢰하지 마라** — 진짜 디바이스 에뮬레이션이 아니라 넓은 레이아웃 뷰포트로 렌더 후 크롭돼 "콘텐츠 우측 잘림" 아티팩트를 만든다(실측: 미디어쿼리는 적용되나 콘텐츠가 잘려 보임). 진짜 판정은 **CDP `Emulation.setDeviceMetricsOverride({width, mobile:true, deviceScaleFactor:2})` 후 `Runtime.evaluate`로 `documentElement.scrollWidth` vs `clientWidth` + 오버플로우 요소 나열**, 스크린샷도 CDP `Page.captureScreenshot`로. node25 global WebSocket로 의존성 0 CDP 클라이언트 작성 가능(scratchpad measure.mjs/shot.mjs 참고).
+**근거**: noi-works-home-design 웨이브에서 --window-size 스샷이 모바일 오버플로우를 오탐→box-sizing 등 헛수정. CDP 실측(vw390·docSW390·offenders[])으로 오버플로우 부재 확정, codex-critic 코드판정이 옳았음을 검증. 브라우저 확장(claude-in-chrome) 탭그룹 반복 소실로 대체 경로 필요했던 정황도 동일 결론.
+**worker**: orchestrator(라이브 검증), claude-main=general-purpose(빌드), codex-critic(코드비평), gemini=agy(시각비평)
+
+## [2026-07-17] [shared-worktree-branch-drift]
+사용자가 **같은 repo 작업트리에서 병행 작업**(raceplanner: 오케스트레이터 feature 브랜치 vs 사용자 product-DB `fueling-db-schema`)하면, 내가 커밋·푸시한 뒤에도 **작업트리 브랜치가 나 모르게 바뀔 수 있다**. 실제로 healthkit-fitness 커밋(d814855) 직후 사용자가 fueling-db-schema로 checkout→제품DB 커밋 4개를 쌓았고, 실기기에 그 브랜치 JS가 서빙돼 "피트니스 버튼 없음"으로 나타남(코드 문제로 오인하기 쉬움). → **디바이스/브라우저에 뜬 것이 예상과 다르면 코드부터 의심하지 말고 `git branch --show-current`·reflog·Metro 서빙 경로부터 확인**. 브랜치 전환이 필요하면 (1)사용자 커밋·stash 무결 먼저 확인 (2)내 빌드가 남긴 미커밋(expo prebuild의 package.json 자동수정 등)만 원복 (3)전환→테스트→**원 브랜치 복귀**를 한 묶음으로. Xcode 툴바의 브랜치 이름표가 실제 HEAD를 보여줬는데 "cosmetic"으로 넘긴 게 초기 오판이었음.
+**부수 교훈(무료 iOS 실기기 dev build)**: `expo run:ios --device <udid>` = 개인팀(무료 Apple ID) 서명이면 (a)Xcode Accounts 로그인+Signing&Capabilities에서 Team 지정은 **사용자 수기**(자격증명이라 대행 불가) (b)codesign이 키체인 접근에서 **SecurityAgent 팝업으로 무한 대기** → "항상 허용" 눌러야 진행(pgrep SecurityAgent+codesign으로 감지 가능) (c)설치 후 iOS가 "개발자 신뢰"(설정>일반>VPN 및 기기 관리) 전엔 실행 거부. native dep 0 변경은 기존 바이너리에 JS만 핫스왑돼 재빌드 불필요.
+**worker**: orchestrator 단독(실기기 배포·검증)
+
+## [2026-07-17] [multiagent-v2-research·build]
+**워커가 우리 자신의 log.md를 인용하면 그 로그의 *행위 주체*를 확인하라.** claude-main이 2026-07-15 오버플로우 오탐을 "gemini 비전의 실패"로 귀속했고 orchestrator가 검증 없이 채택해 사용자 보고까지 나갔다. 실제 로그: gemini는 오버플로우를 **판정한 적이 없고**(abstain한 건 codex-critic), 오탐 주체는 **orchestrator 자신의 `--window-size` 스크린샷 해석**이었다. 자기 오류를 남의 것으로 읽을 때 방어기제가 작동하지 않는다 — codex-critic이 잡았다. never-trust-upstream의 사각지대는 **자기 로그**다.
+**denylist 가드는 원리적으로 진다.** 워커 쓰기 차단을 denylist(리다이렉션·sed -i·rm…)로 짰더니 `python3 -c open(w)`·`node -e writeFileSync`·`>|`·`/usr/bin/touch`·`eval "$(base64 -d)"`·`curl -o`·`rsync`가 전부 통과(codex-critic 실측 7종). allowlist로 뒤집어야 실패 모드가 "조용히 뚫림"→"과차단"이 된다. 과차단은 복구 가능(워커가 result에 적고 orchestrator가 실행)하나 미탐은 정책을 소리 없이 무너뜨린다.
+**`git add -A`는 웨이브 커밋에서 금지에 가깝다.** 세션 최초 `git status`에서 `?? .venv/`를 보고 사용자에게 보고까지 해놓고 `git add -A`로 1,498파일·277,270줄을 커밋했다. 경로를 명시해 스테이징하거나, 최소한 커밋 전 `git diff --cached --stat | tail -1`로 규모를 볼 것.
+**측정 도구의 판정 근거는 ground truth 하나로 좁혀라.** M1 오버플로우 판정에 `documentElement.scrollWidth`와 `getBoundingClientRect` 기반 offender 목록을 OR로 묶었더니, 부모 `overflow:hidden`에 클립된 장식요소가 정상 UI를 반려시켰다. rect는 부모 클립을 모른다 → scrollWidth만 판정, offender는 진단정보로 강등.
+**자가점검 스크립트는 일부러 깨서 검증하라.** INV15 초판은 정규식이 `` - `sandbox`: `` 표기만 잡아 `**sandbox**:`·표·산문을 놓쳤고, `jq select`는 값이 틀려도 exit 0이라 false-PASS였다. "PASS 문자열이 보이는지 사람이 눈으로" 확인하는 점검은 점검이 아니다.
+**worker**: claude-main(목적1 리서치·목적2 설계), gemini=agy(제3자 디자인 진단), codex-critic(적대적 비평 2회 — 리서치안 4건 반려 + 구현 NO-GO 5건). orchestrator(실측·구현·자기정정 3회)

@@ -1,0 +1,217 @@
+#!/usr/bin/env node
+// design-measure.mjs — UI 표면의 결정적(무모델) 측정. 의존성 0 (node 내장 WebSocket + CDP).
+//
+// 왜: 스크린샷은 거짓말한다. headless `--window-size=390`은 진짜 디바이스 에뮬레이션이 아니라
+//     넓은 레이아웃 뷰포트로 렌더 후 크롭돼 "우측 잘림" 아티팩트를 만든다. 2026-07-15
+//     noi-works-home-design에서 이 아티팩트가 오버플로우 오탐 → box-sizing 헛수정을 유발했고,
+//     CDP 실측이 오버플로우 부재를 확정했다(_shared/learnings.md [2026-07-15]).
+//     ⇒ 레이아웃 판정의 ground truth는 DOM이다.
+//
+// 사용:
+//   1) Chrome을 원격 디버깅으로 띄운다:
+//      /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+//        --headless=new --remote-debugging-port=9222 --user-data-dir=$(mktemp -d) about:blank
+//   2) node _shared/tools/design-measure.mjs <url> [--port 9222] [--widths 390,1440]
+//
+// 출력: JSON 1개. M1(blocking)만 pass/fail을 판정하고, 나머지는 warn-only로 관측값만 싣는다.
+//       임계값 근거가 확립되지 않았기 때문 — 근거 없는 숫자로 게이트를 세우지 않는다
+//       (codex-critic 2026-07-17). blocking 승격은 실측 3건 이후.
+//
+// exit: 0 = M1 통과(경고는 있을 수 있음), 1 = M1 실패, 2 = 실행 오류
+
+const args = process.argv.slice(2);
+const url = args.find((a) => !a.startsWith('--'));
+const port = Number(getFlag('--port') ?? 9222);
+const widths = (getFlag('--widths') ?? '390,1440').split(',').map(Number);
+
+function getFlag(name) {
+  const i = args.indexOf(name);
+  return i === -1 ? undefined : args[i + 1];
+}
+
+if (!url) {
+  console.error('usage: design-measure.mjs <url> [--port 9222] [--widths 390,1440]');
+  process.exit(2);
+}
+
+const MEASURE = `(() => {
+  const de = document.documentElement;
+  const vw = de.clientWidth;
+  // 판정 = "넘치는가"가 아니라 **"넘쳐서 사용자가 가로로 스크롤하게 되는가"**.
+  // scrollWidth > clientWidth만 보면 오탐한다: html/body에 overflow-x:hidden|clip이 걸리면
+  // 콘텐츠는 넘치되 **클립되어 사용자 영향이 0인데도** scrollWidth는 계속 커진다.
+  // (실측 2026-07-17 noi-works: sw 478 / cw 390 / html overflow-x:hidden → 스크롤 불가 = 결함 아님.
+  //  .glow는 inset -30%로 의도적으로 번지는 aria-hidden 장식이다.)
+  //
+  // 실제 스크롤 시도(window.scrollTo)는 **헤드리스 에뮬레이션에서 동작하지 않는다** — 진짜
+  // 오버플로우 페이지조차 scrollLeft가 0으로 나온다(실측). 그래서 CSS 전파 규칙으로 실효값을 구한다:
+  // html의 overflow가 visible이 아니면 그것이 뷰포트를 지배하고, visible이면 body의 것이 전파된다.
+  const htmlOX = getComputedStyle(de).overflowX;
+  const bodyOX = getComputedStyle(document.body).overflowX;
+  const effectiveOX = htmlOX !== 'visible' ? htmlOX : bodyOX;
+  const clipped = effectiveOX === 'hidden' || effectiveOX === 'clip';
+  const canScrollX = de.scrollWidth > de.clientWidth && !clipped;
+  const offenders = [];
+  for (const el of document.querySelectorAll('*')) {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    if (r.right > vw + 1 || r.left < -1) {
+      offenders.push({
+        tag: el.tagName.toLowerCase(),
+        cls: (el.className && String(el.className).slice(0, 60)) || null,
+        left: Math.round(r.left), right: Math.round(r.right),
+      });
+      if (offenders.length >= 20) break;
+    }
+  }
+  const sizes = new Set();
+  for (const el of document.querySelectorAll('body *')) {
+    if (!el.textContent || !el.textContent.trim()) continue;
+    sizes.add(getComputedStyle(el).fontSize);
+  }
+  // 탭타겟 임계값은 **표준을 근거로** 나눈다. 하나의 숫자로 뭉뚱그리지 않는다:
+  //  - WCAG 2.2 SC 2.5.8 Target Size (Minimum), **Level AA = 24×24 CSS px** — 웹의 실질 기준
+  //  - WCAG 2.1 SC 2.5.5 Target Size, Level AAA = 44×44 (Apple HIG 44pt와 동일 계열)
+  // 초판은 44 하나만 썼다. 그건 **AAA/네이티브 앱 기준**이라 웹 산출물에 그대로 들이대면
+  // 정상 UI를 대량 오탐한다(실측 2026-07-17 noi-works: 44 기준 14건 중 12건이 AA는 통과).
+  // 근거 없는 숫자로 게이트를 세우지 않는다(codex-critic 2026-07-17).
+  const tapAA = [];   // 24 미만 — 표준 위반
+  const tapAAA = [];  // 24~44 — AAA 미달. 참고용
+  for (const el of document.querySelectorAll('a,button,input,select,textarea,[role=button]')) {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    const rec = {
+      tag: el.tagName.toLowerCase(),
+      cls: (el.className && String(el.className).slice(0, 40)) || null,
+      text: (el.textContent || '').trim().slice(0, 20) || null,
+      w: Math.round(r.width), h: Math.round(r.height),
+    };
+    if (r.width < 24 || r.height < 24) { if (tapAA.length < 20) tapAA.push(rec); }
+    else if (r.width < 44 || r.height < 44) { if (tapAAA.length < 20) tapAAA.push(rec); }
+  }
+  const fonts = new Set();
+  for (const el of document.querySelectorAll('body *')) fonts.add(getComputedStyle(el).fontFamily);
+  return {
+    viewportWidth: vw,
+    scrollWidth: de.scrollWidth,
+    clientWidth: de.clientWidth,
+    canScrollX,                                                       // ← 판정 근거
+    clippedOverflow: de.scrollWidth > de.clientWidth && clipped,      // 넘치나 클립됨 = 결함 아님
+    effectiveOverflowX: effectiveOX,
+    htmlOverflowX: htmlOX,
+    bodyOverflowX: bodyOX,
+    offenders,
+    uniqueFontSizes: sizes.size,
+    fontFamilies: [...fonts].slice(0, 10),
+    tapUnder24_wcag22AA: tapAA,    // 표준 위반 — 실제 결함
+    tapUnder44_wcag21AAA: tapAAA,  // AAA/HIG 미달 — 참고용, 결함 아님
+  };
+})()`;
+
+// 층 1 — 명백한 제네릭 마커. frontend-design 스킬이 명시적으로 금지한 것만 센다.
+// "좋아 보인다"가 아니라 셀 수 있는 것. 회색지대는 여기 넣지 않는다.
+const GENERIC_FONTS = /\b(Inter|Roboto|Arial|Helvetica Neue|system-ui|-apple-system|Space Grotesk)\b/i;
+
+async function cdp(port, url) {
+  const listRes = await fetch(`http://127.0.0.1:${port}/json/list`);
+  const targets = await listRes.json();
+  let target = targets.find((t) => t.type === 'page');
+  if (!target) throw new Error('page 타겟 없음 — Chrome이 --remote-debugging-port로 떠 있나?');
+
+  const ws = new WebSocket(target.webSocketDebuggerUrl);
+  let id = 0;
+  const pending = new Map();
+
+  await new Promise((res, rej) => {
+    ws.addEventListener('open', res, { once: true });
+    ws.addEventListener('error', () => rej(new Error('CDP 연결 실패')), { once: true });
+  });
+
+  ws.addEventListener('message', (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.id && pending.has(msg.id)) {
+      const { resolve, reject } = pending.get(msg.id);
+      pending.delete(msg.id);
+      msg.error ? reject(new Error(JSON.stringify(msg.error))) : resolve(msg.result);
+    }
+  });
+
+  const send = (method, params = {}) =>
+    new Promise((resolve, reject) => {
+      const mid = ++id;
+      pending.set(mid, { resolve, reject });
+      ws.send(JSON.stringify({ id: mid, method, params }));
+    });
+
+  await send('Page.enable');
+  await send('Runtime.enable');
+
+  const results = {};
+  for (const w of widths) {
+    // 핵심: --window-size가 아니라 진짜 디바이스 메트릭 오버라이드.
+    await send('Emulation.setDeviceMetricsOverride', {
+      width: w,
+      height: 900,
+      deviceScaleFactor: 2,
+      mobile: w < 768,
+    });
+    await send('Page.navigate', { url });
+    await new Promise((r) => setTimeout(r, 1500)); // 렌더 정착 대기
+    const { result } = await send('Runtime.evaluate', { expression: MEASURE, returnByValue: true });
+    results[w] = result.value;
+  }
+  ws.close();
+  return results;
+}
+
+try {
+  const per = await cdp(port, url);
+
+  const m1Failures = [];
+  const warnings = [];
+  for (const [w, m] of Object.entries(per)) {
+    // 판정은 **사용자가 실제로 가로 스크롤 할 수 있는가**(canScrollX) 하나로만 한다.
+    // scrollWidth도 offenders도 판정 근거가 아니다 — 둘 다 클립된 콘텐츠를 오탐한다:
+    //  - scrollWidth: html/body에 overflow-x:hidden|clip이면 넘쳐도 사용자 영향 0인데 계속 커진다
+    //  - offenders(getBoundingClientRect): 부모의 overflow:hidden/clip을 모른다
+    // 둘은 *진단 정보*로만 싣는다. 근거 없는 오탐으로 정상 UI를 반려하지 않기 위함.
+    // (codex-critic 2026-07-17 + noi-works 실측 — 의도적으로 번지는 장식 glow를 결함으로 오판)
+    if (m.canScrollX) {
+      m1Failures.push({
+        width: Number(w),
+        scrollWidth: m.scrollWidth,
+        clientWidth: m.clientWidth,
+        suspects: m.offenders, // 진단용 — 부모 클립 미고려. 범인 후보일 뿐 확정 아님
+      });
+    } else if (m.clippedOverflow) {
+      warnings.push(`[${w}] 콘텐츠가 뷰포트를 넘치나 클립되어 스크롤 불가(html:${m.htmlOverflowX}/body:${m.bodyOverflowX}) — **결함 아님**. 의도된 블리드일 수 있음. 진단 참고: ${m.offenders.slice(0, 2).map((o) => o.tag + (o.cls ? '.' + o.cls.split(' ')[0] : '')).join(', ') || '없음'}`);
+    } else if (m.offenders.length > 0) {
+      warnings.push(`[${w}] 뷰포트 밖 요소 ${m.offenders.length}개이나 부모가 클립 중 — 판정 아님, 진단 참고: ${m.offenders.slice(0, 2).map((o) => o.tag + (o.cls ? '.' + o.cls.split(' ')[0] : '')).join(', ')}`);
+    }
+    // warn-only: 임계값에 근거가 없다. 관측만 하고 판정하지 않는다.
+    if (m.uniqueFontSizes > 6) warnings.push(`[${w}] 고유 font-size ${m.uniqueFontSizes}개 (참고대역 3~6 — 근거 미확립, 판정 아님)`);
+    if (Number(w) < 768) {
+      if (m.tapUnder24_wcag22AA.length) {
+        warnings.push(`[${w}] **WCAG 2.2 AA(24px) 미달 탭타겟 ${m.tapUnder24_wcag22AA.length}개 — 표준 위반**: ${m.tapUnder24_wcag22AA.slice(0, 3).map((t) => `${t.tag}${t.cls ? '.' + t.cls.split(' ')[0] : ''}(${t.w}×${t.h}${t.text ? ' "' + t.text + '"' : ''})`).join(', ')}`);
+      }
+      if (m.tapUnder44_wcag21AAA.length) {
+        warnings.push(`[${w}] AAA/HIG(44px) 미달 탭타겟 ${m.tapUnder44_wcag21AAA.length}개 — **AA는 통과, 결함 아님**. 네이티브 앱 수준을 원할 때만 참고`);
+      }
+    }
+    const generic = m.fontFamilies.filter((f) => GENERIC_FONTS.test(f));
+    if (generic.length) warnings.push(`[${w}] 제네릭 폰트 마커: ${generic.slice(0, 3).join(' / ')} (design-contract에 의도적 선택 사유가 있으면 무시)`);
+  }
+
+  const out = {
+    url,
+    widths,
+    m1_overflow: { blocking: true, pass: m1Failures.length === 0, failures: m1Failures },
+    warnings: { blocking: false, note: '임계값 근거 미확립 — 관측만. blocking 승격은 실측 3건 후', items: warnings },
+    raw: per,
+  };
+  console.log(JSON.stringify(out, null, 2));
+  process.exit(out.m1_overflow.pass ? 0 : 1);
+} catch (e) {
+  console.error(JSON.stringify({ error: String(e && e.message || e) }, null, 2));
+  process.exit(2);
+}

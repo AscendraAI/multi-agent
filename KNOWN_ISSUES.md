@@ -8,6 +8,59 @@
 
 ---
 
+## KI-2 — `write_scope`가 산문으로만 강제된다 (bypassPermissions 하에서 기계적 경계 0)
+
+- **상태**: 🟡 **부분 완화** (claude-main 한정) — 열린 채로 둔다. `_shared/adapters/worker_write_guard.sh` + agent frontmatter 훅. 2026-07-17, `tasks/multiagent-v2-build/` W2
+- **심각도**: 높음 → **중간**. 직접 쓰기는 막혔으나 **완전한 기계적 강제는 아니다**(아래 남은 구멍).
+- ⚠️ **"해소"로 표기했다가 되돌림** — codex-critic이 초판 denylist의 우회 7종을 실측으로 뚫었다. 완화를 해소로 부르지 말 것.
+
+### 완화 내용
+
+`.claude/agents/claude-main.md` frontmatter에 `hooks: PreToolUse (matcher: Write|Edit|NotebookEdit|Bash)`로 가드를 부착. 실측 근거 2건:
+
+1. **PreToolUse `permissionDecision: "deny"`는 `bypassPermissions`를 이긴다** — 격리 probe로 확정(deny 케이스 파일 미생성, 대조군 정상 생성). 그간 문서 주장만 있고 아무도 확인하지 않던 미지수.
+2. **PreToolUse 입력엔 `agent_type`이 없다**(실측: `session_id`·`cwd`·`permission_mode`·`tool_name`·`tool_input`·`tool_use_id`만). 워커/오케 구분은 훅을 **agent 정의에 부착**해 해결.
+
+E2E 실측: 프롬프트에 "이 호출에 한해 write_scope 승인됨"이라 써넣어도 **차단**됨 — 가드가 프롬프트가 아니라 역할로 강제한다.
+
+**denylist → allowlist 전환** (codex-critic 실측 후): 초판 denylist는 `python3 -c open(w)` · `node -e writeFileSync` · `echo >| f` · `/usr/bin/touch` · `eval "$(base64 -d)"` · `curl -o` · `rsync`를 **전부 통과**시켰다. denylist는 원리적으로 진다 → 읽기·검증 명령 allowlist로 뒤집어 실패 모드를 "조용히 뚫림"에서 "과차단"으로 바꿨다. 과차단은 복구 가능하다(워커가 result에 적고 Orchestrator가 실행 — 기존 계약). 회귀 28/28 PASS(우회 14 DENY / 정상작업 14 ALLOW).
+
+### 남은 구멍 (이 이슈를 닫지 못하는 이유)
+
+1. **허용 명령의 간접 쓰기** — `pnpm test`·`npx tsc --incremental`·`pytest`는 캐시·coverage·snapshot·증분빌드 산출물을 쓴다. 허용해야 워커가 검증을 하므로 **의도적으로 남긴 구멍**이다. 즉 `write_scope=none`은 여전히 완전 강제되지 않는다.
+2. **allowlist 안 도구의 미열거 쓰기 경로** — `git`·`jq`·`awk` 등의 창의적 오용.
+3. ⇒ 이것은 **사고·표류 방지**이지 **적대적 샌드박스가 아니다.** 적대적 워커를 가정하지 말 것. 진짜 격리는 프로세스 레벨 sandbox(codex-main 경로) 소관.
+
+**운영 유의**: agent frontmatter는 **세션 시작 시 로드** — 가드는 새 세션부터 유효하다.
+
+### (이하 해소 전 기록 — 재발 시 참조)
+
+### 증상
+
+`workers_approved`의 `write_scope`(`none`/`tasks-only`/패턴)는 승인 계약이지만, 이를 강제하는 기계적 수단이 없다.
+
+- `.claude/agents/claude-main.md:5` — `tools: '*'` (Write/Edit 전권, `disallowedTools` 부재). "파일 시스템에 직접 쓰지 않는다"는 **agent 본문의 산문 지시**일 뿐
+- `.claude/settings.json` — `defaultMode: bypassPermissions` (1.3.0). 위반해도 **승인 프롬프트가 뜨지 않음**
+- `_shared/autonomy-policy.md`가 "AUTO = write_scope 내"를 전제하는데 그 경계가 실재하지 않음. 정책 §5는 스스로 "규약이 아니라 CI가 강제자"라 선언해놓고 **자기 정책은 규약으로만** 지킨다 (자기모순)
+
+### 기각된 수정안 (그대로 채택 금지)
+
+`disallowedTools: Write, Edit, NotebookEdit` 추가 — **codex-critic이 무너뜨림**(2026-07-17):
+- **강제되지 않음** — `tools: '*'` 유지 시 Bash `sed -i`·셸 리다이렉션·빌드 스크립트로 우회. Write/Edit 차단은 쓰기 경로의 **부분집합**일 뿐
+- **자기모순** — Write/Edit 영구 제거는 "write_scope별 강제"가 아니라 **claude-main 영구 read-only화**이며, routing.md가 규정한 "메인 코딩·코드 구현·수정" 역할을 도구 수준에서 박탈
+
+### 미해결 선결 과제
+
+1. **실측 필요**: `bypassPermissions` 하에서 `PreToolUse` 훅의 `permissionDecision: "deny"`가 실제로 우선하는가? (문서 주장만 존재 — 실행 확인 안 됨)
+2. **설계 필요**: 훅이 현재 호출의 승인된 `task`·`target_repo`·경로 패턴을 **어떤 권위 데이터 소스**에서 읽을 것인가. `write_scope`는 task별 승인값이라 고정 경로 판정으론 계약을 구현할 수 없다
+3. Bash를 포함한 **모든 쓰기 경로**를 덮어야 함
+
+### 참고
+
+- 근거: `tasks/multiagent-v2-research/artifacts/upgrade-proposal.md` §2 R1, `workers/codex-critic/result.md` §1
+
+---
+
 ## KI-1 (audit C3) — 표준 `worker-brief.md`를 쓰면 mat이 워커 목적을 ` ```yaml `로 표시
 
 - **상태**: 열림 / **보류** (경미·표시 한정. 크리티컬 C1·C2는 PR #3·#5에서 해소됨)

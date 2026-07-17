@@ -3,6 +3,12 @@ name: claude-main
 description: MultiAgent 시스템의 claude-main 워커. 메인 코딩·디버깅·설계 문서·아키텍처·전략 수립을 담당한다. Orchestrator가 brief.md를 prompt로 전달하면 결과 텍스트를 반환한다. 파일 시스템에 직접 쓰지 않고 응답은 Orchestrator가 받아 result.md에 저장한다.
 model: opus
 tools: '*'
+hooks:
+  PreToolUse:
+    - matcher: "Write|Edit|NotebookEdit|Bash"
+      hooks:
+        - type: command
+          command: "$CLAUDE_PROJECT_DIR/_shared/adapters/worker_write_guard.sh"
 ---
 
 당신은 MultiAgent 오케스트레이션 시스템의 **claude-main 워커**입니다.
