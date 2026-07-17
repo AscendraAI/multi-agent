@@ -69,14 +69,25 @@ const MEASURE = `(() => {
     if (!el.textContent || !el.textContent.trim()) continue;
     sizes.add(getComputedStyle(el).fontSize);
   }
-  const tap = [];
+  // 탭타겟 임계값은 **표준을 근거로** 나눈다. 하나의 숫자로 뭉뚱그리지 않는다:
+  //  - WCAG 2.2 SC 2.5.8 Target Size (Minimum), **Level AA = 24×24 CSS px** — 웹의 실질 기준
+  //  - WCAG 2.1 SC 2.5.5 Target Size, Level AAA = 44×44 (Apple HIG 44pt와 동일 계열)
+  // 초판은 44 하나만 썼다. 그건 **AAA/네이티브 앱 기준**이라 웹 산출물에 그대로 들이대면
+  // 정상 UI를 대량 오탐한다(실측 2026-07-17 noi-works: 44 기준 14건 중 12건이 AA는 통과).
+  // 근거 없는 숫자로 게이트를 세우지 않는다(codex-critic 2026-07-17).
+  const tapAA = [];   // 24 미만 — 표준 위반
+  const tapAAA = [];  // 24~44 — AAA 미달. 참고용
   for (const el of document.querySelectorAll('a,button,input,select,textarea,[role=button]')) {
     const r = el.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) continue;
-    if (r.width < 44 || r.height < 44) {
-      tap.push({ tag: el.tagName.toLowerCase(), w: Math.round(r.width), h: Math.round(r.height) });
-      if (tap.length >= 20) break;
-    }
+    const rec = {
+      tag: el.tagName.toLowerCase(),
+      cls: (el.className && String(el.className).slice(0, 40)) || null,
+      text: (el.textContent || '').trim().slice(0, 20) || null,
+      w: Math.round(r.width), h: Math.round(r.height),
+    };
+    if (r.width < 24 || r.height < 24) { if (tapAA.length < 20) tapAA.push(rec); }
+    else if (r.width < 44 || r.height < 44) { if (tapAAA.length < 20) tapAAA.push(rec); }
   }
   const fonts = new Set();
   for (const el of document.querySelectorAll('body *')) fonts.add(getComputedStyle(el).fontFamily);
@@ -92,8 +103,8 @@ const MEASURE = `(() => {
     offenders,
     uniqueFontSizes: sizes.size,
     fontFamilies: [...fonts].slice(0, 10),
-    tapTargetsUnder44: tap.length,
-    tapSamples: tap.slice(0, 5),
+    tapUnder24_wcag22AA: tapAA,    // 표준 위반 — 실제 결함
+    tapUnder44_wcag21AAA: tapAAA,  // AAA/HIG 미달 — 참고용, 결함 아님
   };
 })()`;
 
@@ -179,7 +190,14 @@ try {
     }
     // warn-only: 임계값에 근거가 없다. 관측만 하고 판정하지 않는다.
     if (m.uniqueFontSizes > 6) warnings.push(`[${w}] 고유 font-size ${m.uniqueFontSizes}개 (참고대역 3~6 — 근거 미확립, 판정 아님)`);
-    if (m.tapTargetsUnder44 > 0 && Number(w) < 768) warnings.push(`[${w}] 44px 미만 탭타겟 ${m.tapTargetsUnder44}개`);
+    if (Number(w) < 768) {
+      if (m.tapUnder24_wcag22AA.length) {
+        warnings.push(`[${w}] **WCAG 2.2 AA(24px) 미달 탭타겟 ${m.tapUnder24_wcag22AA.length}개 — 표준 위반**: ${m.tapUnder24_wcag22AA.slice(0, 3).map((t) => `${t.tag}${t.cls ? '.' + t.cls.split(' ')[0] : ''}(${t.w}×${t.h}${t.text ? ' "' + t.text + '"' : ''})`).join(', ')}`);
+      }
+      if (m.tapUnder44_wcag21AAA.length) {
+        warnings.push(`[${w}] AAA/HIG(44px) 미달 탭타겟 ${m.tapUnder44_wcag21AAA.length}개 — **AA는 통과, 결함 아님**. 네이티브 앱 수준을 원할 때만 참고`);
+      }
+    }
     const generic = m.fontFamilies.filter((f) => GENERIC_FONTS.test(f));
     if (generic.length) warnings.push(`[${w}] 제네릭 폰트 마커: ${generic.slice(0, 3).join(' / ')} (design-contract에 의도적 선택 사유가 있으면 무시)`);
   }
