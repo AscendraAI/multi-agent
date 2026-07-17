@@ -144,6 +144,18 @@ else
   pass "gemini_api.sh 폴백 실구현"
 fi
 
+# 가드가 참조하는 sandbox 프로파일이 실재하는가 — 없으면 래핑이 **조용히** 꺼진다
+# (가드는 프로파일 부재 시 allow로 폴백한다. 그게 의도지만, 파일이 실수로 사라진 건 결함이다.)
+if grep -q 'worker-sandbox.sb' "$ROOT/_shared/adapters/worker_write_guard.sh" 2>/dev/null; then
+  [ -f "$ROOT/_shared/adapters/worker-sandbox.sb" ] && pass "worker-sandbox.sb 실재" \
+    || fail "worker-sandbox.sb — 가드가 참조하는데 파일 없음 → sandbox 래핑이 조용히 비활성"
+fi
+
+# 가드는 fail-closed여야 한다 — 크래시 시 allow로 새면 안전장치가 자기 버그로 사라진다
+grep -q '_fail_closed\|trap .* EXIT' "$ROOT/_shared/adapters/worker_write_guard.sh" 2>/dev/null \
+  && pass "worker_write_guard fail-closed 트랩" \
+  || fail "worker_write_guard — fail-closed 트랩 유실 (크래시 시 fail-OPEN)"
+
 # ── 유지보수자 전용 (자산 있을 때만) ──
 TPL="$ROOT/plugins/multi-agent-starter/skills/configure-multiagent/generator/templates"
 if [ -d "$TPL" ]; then

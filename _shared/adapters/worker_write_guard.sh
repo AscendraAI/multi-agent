@@ -30,16 +30,38 @@
 
 set -uo pipefail
 
-input="$(cat)"
-
-tool="$(printf '%s' "$input" | jq -r '.tool_name // ""')"
+# ── fail-closed (반드시 다른 무엇보다 먼저) ──
+# PreToolUse에서 **exit 2 = 차단**, 그 외 non-zero = *비차단* 에러(툴이 그냥 진행)다.
+# 즉 이 훅이 크래시하면 가드가 **없는 것과 같아진다** — 안전장치가 자기 버그로 사라지는 최악.
+# 실측(2026-07-17): ROOT unbound로 죽자 명령이 검사 없이 통과했다. ERR 트랩은 `set -u`
+# 위반을 못 잡았고, 트랩을 대입문 뒤에 걸어 그 이전 크래시도 놓쳤다.
+# ⇒ EXIT 트랩으로 "판정을 못 냈으면 차단"을 강제한다. 트랩은 스크립트 **최상단**에 건다.
+_decided=0
+_fail_closed() {
+  [ "$_decided" -eq 1 ] && return
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"worker_write_guard 내부 오류 — 판정을 내지 못해 안전을 위해 차단한다. Orchestrator가 가드를 점검할 것."}}\n'
+  exit 2
+}
+trap _fail_closed EXIT
 
 deny() {
+  _decided=1
   jq -nc --arg r "$1" \
     '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
   exit 0
 }
-allow() { printf '{}\n'; exit 0; }
+allow() { _decided=1; printf '{}\n'; exit 0; }
+
+ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+
+input="$(cat)"
+
+# 의존성·입력을 못 믿으면 판정할 수 없다 → 차단. (실측 2026-07-17: jq가 없으면
+# tool이 빈 문자열이 되고 `*)` 분기로 떨어져 **allow** — 가드가 조용히 무력화됐다.)
+command -v jq >/dev/null 2>&1 || deny "worker_write_guard: jq 없음 — 판정 불가라 차단한다."
+
+tool="$(printf '%s' "$input" | jq -r '.tool_name // ""')"
+[ -n "$tool" ] || deny "worker_write_guard: tool_name을 읽지 못했다 — 판정 불가라 차단한다."
 
 case "$tool" in
   Write|Edit|NotebookEdit)
@@ -102,7 +124,7 @@ EOF
     if printf '%s' "$cmd" | grep -qE '(^|[[:space:]])(sed|perl|python3?|ruby)[[:space:]]+[^;|&]*(-i|-c|-e)([[:space:]]|$)'; then
       deny "claude-main의 in-place 편집·인라인 스크립트(sed -i / python3 -c 등)가 차단됐다 — 임의 파일쓰기 경로다. 변경은 diff로 반환하라."
     fi
-    if printf '%s' "$cmd" | grep -qE '(^|[[:space:]])node[[:space:]]+-e([[:space:]]|$)'; then
+    if printf '%s' "$cmd" | grep -qE '(^|[[:space:]])node[[:space:]]+-(e|p|-eval|-print)([[:space:]]|$)'; then
       deny "claude-main의 node -e 인라인 스크립트가 차단됐다 — 임의 파일쓰기 경로다."
     fi
     if printf '%s' "$cmd" | grep -qE '(^|[[:space:]])(npm|pnpm|yarn|bun)[[:space:]]+(i|install|add|remove|uninstall|link|publish|update|up)([[:space:]]|$)'; then
@@ -112,7 +134,22 @@ EOF
       deny "claude-main의 awk/sed 파일쓰기가 차단됐다."
     fi
 
-    allow
+    # ── 통과한 명령은 sandbox로 감싼다 (커널 레벨 쓰기 제한) ──
+    # allowlist는 **직접 쓰기**만 막는다. 허용된 `pnpm test`·`npx tsc`·`pytest`가
+    # 하위 프로세스에서 쓰는 캐시·coverage는 훅이 보지 못한다. 커널에서 가둔다.
+    # 쓰기 허용: repo · TMPDIR · /tmp · /dev. 그 밖(~/.claude·타 repo·/etc)은 차단.
+    # ⇒ KI-2를 닫지 않는다. **범위를 좁힐 뿐** — repo 안 쓰기는 남는다(커널은 캐시와 소스를 구분 못 함).
+    PROFILE="$ROOT/_shared/adapters/worker-sandbox.sb"
+    if [ -f "$PROFILE" ] && command -v sandbox-exec >/dev/null 2>&1; then
+      tmp="${TMPDIR:-/tmp}"; tmp="${tmp%/}"
+      # printf %q — 원본 명령을 단일 인자로 안전하게 인용(따옴표 지옥 회피)
+      wrapped="sandbox-exec -f $(printf '%q' "$PROFILE") -D REPO=$(printf '%q' "$ROOT") -D TMP=$(printf '%q' "$tmp") /bin/bash -c $(printf '%q' "$cmd")"
+      _decided=1
+      jq -nc --arg c "$wrapped" \
+        '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",updatedInput:{command:$c}}}'
+      exit 0
+    fi
+    allow   # sandbox-exec 없는 환경(비-macOS 등) → 래핑 없이 allowlist만으로 진행
     ;;
   *)
     allow
