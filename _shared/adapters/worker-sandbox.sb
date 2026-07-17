@@ -1,0 +1,26 @@
+;; worker-sandbox.sb — claude-main 워커의 Bash 실행을 쓰기 관점에서 가둔다.
+;;
+;; 왜: worker_write_guard.sh의 allowlist는 **직접 쓰기**만 막는다. 허용된
+;;     `pnpm test`·`npx tsc`·`pytest`는 내부적으로 캐시·coverage를 쓰고,
+;;     그 쓰기가 어디로 가는지는 훅이 못 본다(하위 프로세스). 커널에서 가둔다.
+;;
+;; 정책: 읽기·실행은 자유. **쓰기만** repo·임시경로·/dev 로 제한.
+;;       repo 안 쓰기는 여전히 가능하다 — 캐시와 소스를 커널이 구분하지 못하므로.
+;;       ⇒ 이것은 KI-2를 닫지 않는다. **범위를 좁힐 뿐**(부분 완화 유지).
+;;
+;; 파라미터: -D REPO=<절대경로> -D TMP=<TMPDIR>
+
+(version 1)
+(allow default)
+
+(deny file-write*)
+
+(allow file-write*
+  (subpath (param "REPO"))
+  (subpath (param "TMP"))
+  (subpath "/private/tmp")
+  (subpath "/private/var/folders")
+  (subpath "/tmp"))
+
+;; 표준 출력·터미널·랜덤 — 도구가 흔히 여는 것들
+(allow file-write* (regex #"^/dev/"))
