@@ -23,6 +23,7 @@
 | INV13 | approval-policy.md 에 "원격 승인 알림" 절 존재 + `best-effort`/폴백 표현 있음(하드게이트로 변질 아님) | D9 위반 — 알림이 작업을 막는 하드 의존이 되거나 절 유실 |
 | INV14 | autonomy-policy.md에 소비스 티어(AUTO/HARD-STOP)·PR 체크포인트·linear 기본/병렬=독립섬 절 존재 + design-basis §2 권위순위에 autonomy-policy 포함 | D10 위반 — 스텝단위 게이트 회귀/무제한 병렬/권위 슬롯 유실 |
 | INV15 | **정본 소유 분리**: routing.md에 호출 기전 값(`sandbox:`/`approval-policy:`/`call_type:`/`args_template:`)의 **재기술이 없음**(포인터·효과 설명은 허용) + backends.json의 codex-main이 `workspace-write`(역할=산출물 작성과 정합) + codex-critic이 `read-only` | D11 위반 — 값 이중화가 조용히 갈라짐. 2026-07-17 실증: backends `read-only` ↔ routing `workspace-write`가 디스패처 `die` 뒤에 무증상 잠복 |
+| INV16 | **어댑터·가드 무결성**: (a) backends.json JSON 유효 (b) 어댑터·도구 스크립트 6종 실행권한 (c) **선언된 폴백 = 실구현**(gemini_api가 스텁이 아님) (d) 가드가 참조하는 sandbox 프로파일 실재 (e) **가드 fail-closed 행동 검사** — 깨진 입력·치환 우회는 deny, 정상 읽기는 통과. 문자열 존재가 아니라 **실제 동작**을 본다 | 실증된 사고 유형들: 실행권한 부재로 디스패처 막힘(2026-07-17) · 스텁 폴백의 거짓 안전감(6주 잠복) · 가드가 크래시 시 fail-OPEN(2026-07-18 codex-critic). **문자열 검사는 fail-open을 PASS시킨다 → 행동 검사 필수** |
 
 > ※ **매뉴얼(외부 repo) 비교 항목은 유지보수자 전용(optional)**. 공개 설치본에는 매뉴얼이 없으므로 핵심 점검(INV1–4·6–14)은 시스템 파일 자체 일관성만 본다. INV5와 각 INV의 매뉴얼 측 일치 검사, INV12e/f의 3 flavor 교차 점검은 아래 스크립트의 optional 블록에서 해당 자산이 있을 때만 실행된다.
 

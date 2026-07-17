@@ -126,35 +126,45 @@ chk codex-critic sandbox         read-only
 grep -q 'D11 정본 소유 규칙' "$ROOT/_shared/design-basis.md" 2>/dev/null \
   && pass "INV15c D11 절 존재" || fail "INV15c — D11 절 유실"
 
-# ── 구조 위생 (불변식은 아니나 실증된 사고 유형) ──
+# ── INV16: 어댑터·가드 무결성 (표 정의는 system-invariants.md INV16) ──
 jq empty "$ROOT/_shared/backends.json" 2>/dev/null \
-  && pass "backends.json JSON 유효" || fail "backends.json — JSON 파싱 실패"
-for f in call_worker.sh gemini_api.sh notify.sh worker_write_guard.sh; do
-  [ -x "$ROOT/_shared/adapters/$f" ] && pass "adapters/$f 실행권한" \
-    || fail "adapters/$f — 실행권한 없음 (2026-07-17 실증: 디스패처 호출이 막혔다)"
+  && pass "INV16a backends.json JSON 유효" || fail "INV16a — backends.json JSON 파싱 실패"
+for f in call_worker.sh gemini_api.sh notify.sh worker_write_guard.sh self-check.sh selfcheck-hook.sh; do
+  [ -x "$ROOT/_shared/adapters/$f" ] 2>/dev/null || [ -x "$ROOT/_shared/tools/$f" ] 2>/dev/null \
+    && pass "INV16b $f 실행권한" || fail "INV16b — $f 실행권한 없음 (2026-07-17 실증: 디스패처 호출 막힘)"
 done
 
-# 선언된 폴백이 실제로 구현돼 있는가 — "선언 있고 구현 없음"이 실증된 결함 유형이다.
-# gemini_api.sh는 2026-06-02~07-17 내내 "슬롯만 정의됨(spike S3 미완)" 스텁이라 무조건 exit 4였다.
-# backends.json은 그동안 api 폴백을 선언하고 있었다 → 거짓 안전감. agy 쿼터 소진 때 실제로 막혔다.
+# INV16c: 선언된 폴백이 실제로 구현돼 있는가 (선언≠구현이 실증된 결함 유형)
 if grep -q 'slot only\|슬롯만 정의\|미구성' "$ROOT/_shared/adapters/gemini_api.sh" 2>/dev/null \
    && ! grep -q 'generativelanguage.googleapis.com' "$ROOT/_shared/adapters/gemini_api.sh" 2>/dev/null; then
-  fail "gemini_api.sh — 스텁인데 backends.json이 api 폴백을 선언 중 (선언≠구현)"
-else
-  pass "gemini_api.sh 폴백 실구현"
-fi
+  fail "INV16c — gemini_api.sh 스텁인데 backends가 api 폴백 선언 (선언≠구현)"
+else pass "INV16c gemini_api.sh 폴백 실구현"; fi
 
-# 가드가 참조하는 sandbox 프로파일이 실재하는가 — 없으면 래핑이 **조용히** 꺼진다
-# (가드는 프로파일 부재 시 allow로 폴백한다. 그게 의도지만, 파일이 실수로 사라진 건 결함이다.)
+# INV16d: sandbox 프로파일 실재 (없으면 가드 래핑이 조용히 비활성)
 if grep -q 'worker-sandbox.sb' "$ROOT/_shared/adapters/worker_write_guard.sh" 2>/dev/null; then
-  [ -f "$ROOT/_shared/adapters/worker-sandbox.sb" ] && pass "worker-sandbox.sb 실재" \
-    || fail "worker-sandbox.sb — 가드가 참조하는데 파일 없음 → sandbox 래핑이 조용히 비활성"
+  [ -f "$ROOT/_shared/adapters/worker-sandbox.sb" ] && pass "INV16d worker-sandbox.sb 실재" \
+    || fail "INV16d — 가드가 참조하는 worker-sandbox.sb 없음 → 래핑 조용히 비활성"
 fi
 
-# 가드는 fail-closed여야 한다 — 크래시 시 allow로 새면 안전장치가 자기 버그로 사라진다
-grep -q '_fail_closed\|trap .* EXIT' "$ROOT/_shared/adapters/worker_write_guard.sh" 2>/dev/null \
-  && pass "worker_write_guard fail-closed 트랩" \
-  || fail "worker_write_guard — fail-closed 트랩 유실 (크래시 시 fail-OPEN)"
+# INV16e: 가드 fail-closed **행동 검사**. 문자열 grep이 아니라 실제로 크래시/우회 입력을 먹여
+#   deny가 나오는지 본다 — 초판은 트랩 문자열 존재만 봤고 실제 fail-OPEN을 PASS시켰다(codex-critic 2026-07-18).
+_g="$ROOT/_shared/adapters/worker_write_guard.sh"
+if [ -x "$_g" ]; then
+  _gd() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}' | bash "$_g" 2>/dev/null | grep -c '"deny"'; }
+  _bad=""
+  # 차단돼야 (deny=1). codex-critic 2026-07-18 우회 벡터 포함.
+  for c in 'echo $(touch X)' 'echo `touch X`' 'echo ok; touch X' 'env touch X' 'command touch X' 'find . -exec touch X {} ;' 'echo x > f'; do
+    [ "$(_gd "$c")" = "1" ] || _bad="$_bad [deny실패:$c]"
+  done
+  # 깨진 JSON → deny (fail-closed)
+  [ "$(printf '{' | bash "$_g" 2>/dev/null | grep -c '"deny"')" = "1" ] || _bad="$_bad [깨진입력 fail-OPEN]"
+  # 통과돼야 (deny=0). 과차단이면 워커 역할 파괴.
+  for c in 'grep -rn foo src' 'grep -o foo f' 'git diff $(git merge-base HEAD origin/main)' 'grep "print >" src'; do
+    [ "$(_gd "$c")" = "0" ] || _bad="$_bad [과차단:$c]"
+  done
+  [ -z "$_bad" ] && pass "INV16e 가드 행동 검사 (우회 7종 deny·fail-closed·정상 4종 통과)" \
+    || fail "INV16e — 가드 행동 이상:$_bad"
+fi
 
 # ── 유지보수자 전용 (자산 있을 때만) ──
 TPL="$ROOT/plugins/multi-agent-starter/skills/configure-multiagent/generator/templates"

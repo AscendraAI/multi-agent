@@ -3,6 +3,24 @@
 이 파일은 MultiAgent orchestration 시스템의 주요 변경을 기록한다.
 형식은 [Keep a Changelog](https://keepachangelog.com/), 버전은 [Semantic Versioning](https://semver.org/lang/ko/)을 따른다.
 
+## [1.4.0] - 2026-07-18
+
+자가점검을 규약에서 실행으로(G7), gemini API 폴백 실구현, 워커 쓰기의 커널 레벨 제한.
+공통 주제: **"선언은 있는데 구현이 없다"를 실물로 메운다.**
+
+### Added
+- **자가점검 자동화 (G7)** — `_shared/tools/self-check.sh`(INV1~15 + 구조위생, **exit code가 판정**) · `selfcheck-hook.sh`(시스템 파일 변경 세션에서만 발동하는 Stop 훅, fail-open 알림) · `.github/workflows/self-check.yml`(PR·main push CI 게이트, 어댑터 실행권한·워커 가드 회귀 18종·추적금지 파일 검사). `system-invariants.md`는 D11에 따라 스크립트 본문 126줄을 포인터로 교체(표=정의, 스크립트=검사). 음성 대조군으로 CI가 깨진 PR을 실제 red 처리함을 실증.
+- **gemini API 폴백 실구현** — `gemini_api.sh`가 2026-06-02부터 "슬롯만 정의됨" 스텁이라 무조건 exit 4였다(선언≠구현). 실제 Gemini REST(`generateContent`) + **이미지 자동 첨부**(brief 본문의 절대경로를 inline base64로 — agy CLI는 헤드리스에서 `read_file` 권한 자동거부로 이미지를 못 읽는다). 시크릿은 `_local/gemini-api-key`(gitignored, env 우선). agy 쿼터 소진 시 디스패처가 api로 자동 폴백(E2E 확인).
+- **워커 쓰기 커널 제한 (KI-2 2차 완화)** — `worker-sandbox.sb`(seatbelt 프로파일: 읽기·실행 자유, 쓰기만 repo·TMPDIR·/tmp·/dev로 제한) + 가드가 allowlist 통과 명령을 `sandbox-exec`로 래핑. 문자열 검사가 못 잡는 **난독화 쓰기**를 커널이 EPERM으로 차단(E2E: `String.fromCharCode` 우회 실패). 가드에 **fail-closed** EXIT 트랩(크래시·jq부재 시 deny — 그전엔 조용히 통과).
+
+### Fixed
+- **design-measure.mjs 오탐/미탐 2건** — M1 오버플로우 판정을 `scrollWidth`(클립된 컨테이너에서도 커짐)에서 **실효 `overflow-x`**(CSS 전파) 기준으로. 탭타겟 임계값 44px(AAA/HIG)를 표준 근거별 2등급으로(WCAG 2.2 AA 24px = 결함 / 24~44 = 참고).
+- **backends.json 폴백 모델명** — `gemini-3.1-pro-high`(agy CLI 전용 명명, API에 부존재) → `gemini-3.1-pro-preview`.
+
+### Notes
+- **KI-2는 여전히 열림** — 커널은 캐시(`node_modules/.cache`)와 소스(`src/`)를 같은 "repo 쓰기"로 본다. repo 안 쓰기는 남는다. 범위 축소이지 해소 아님.
+- **디자인 모드는 실험적** — 통제실험 2라운드에서 "계약은 규율을 준다"(2/2)는 재현됐으나 "규율 → 미적 품질"은 미검증(R1·R2 블라인드 순위 역전). routing 반영 보류.
+
 ## [1.3.0] - 2026-07-17
 
 자율 운용 전환(D9·D10) 백필 + 정본 소유 규칙(D11) 신설. 1.2.2 이후 미기록분을 함께 정리한다.
