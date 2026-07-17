@@ -129,3 +129,23 @@
 **MIT 리브랜딩의 실제 관문은 라이선스가 아니라 인프라 탯줄이다.** LICENSE 병기는 5분이면 끝났고, 실제 작업량은 원저자 폰홈(`api.ytclip.org` 업데이트 체크)·유료 API 프로바이더·수익화 훅 3종 제거였다. "이름 바꾸기"로 접근하면 남의 서버를 계속 호출하는 앱이 우리 브랜드로 나간다.
 **부수(환경)**: CustomTkinter GUI 앱 검증엔 **tkinter 포함 Python**이 필요한데 pyenv 빌드는 기본적으로 `_tkinter` 없이 만들어진다(3.11.13 실측). `brew install python-tk@3.11`로 해소. GUI 기동 검증은 `App(); a.after(3000, a.destroy); a.mainloop()` 하네스로 자동 종료 가능 — 창 구성 단계에서 깨진 import·자산 경로가 전부 드러난다. `screencapture -R`은 화면 기록 권한 없으면 `could not create image from rect`로 실패(육안 검증은 사람 게이트로).
 **worker**: codex-main(리브랜딩 구현·D2 미완료를 정직하게 표면화), codex-critic(적대적 리뷰 — NO-GO 1건, 양측 공유 맹점 적발). orchestrator(LICENSE·NOTICE·.gitignore·아이콘 6종 자체제작·D2 실측·자기정정 1회)
+
+## [2026-07-17] [multiagent-v2 · selfcheck · design-trial]
+
+**never-trust-upstream의 사각지대는 *자기 로그*다.** claude-main이 2026-07-15 오버플로우 오탐을 "gemini 비전의 실패"로 귀속했고 나는 검증 없이 채택해 사용자 보고까지 냈다. 실제 로그: gemini는 그 사안을 **판정한 적이 없고**(abstain은 codex-critic), 오탐 주체는 **내 `--window-size` 스크린샷 해석**이었다. codex-critic이 잡았다. 워커가 우리 log.md를 인용하면 **그 로그의 행위 주체를 확인하라** — 자기 오류를 남의 것으로 읽을 때 방어기제가 작동하지 않는다.
+
+**n=1로 규칙을 만들지 마라 — 이 세션에서 그 함정 앞까지 갔다.** 디자인 모드 통제실험 R1에서 "스킬 단독은 baseline보다 해롭다"(정량 3/5 악화 + 블라인드 꼴찌)를 강하게 보고하고 routing 반영을 시사했다. **R2가 정면 반증**: 같은 조건·같은 brief인데 블라인드 순위가 **완전 역전**(B 꼴찌→1위, A 2위→꼴찌). ⇒ arm당 n=1에서 미적 평가는 **조건 효과가 아니라 출력 분산이 지배**한다. 살아남은 결론은 "계약은 시킨 것을 시킨 대로 시킨다"(font-size 정확히 4단계, 2/2 재현)뿐 — **"규율 → 아름다움"은 여전히 미검증.** 사용자가 반복을 지시하지 않았으면 근거 없는 규칙이 박혔다.
+
+**"선언은 있는데 구현이 없다"는 조용히 6주를 산다.** `backends.json`이 2026-06-02부터 gemini `api` 폴백을 선언했으나 `gemini_api.sh`는 "슬롯만 정의됨" 스텁이라 무조건 exit 4였다. 디스패처의 "GEMINI_API_KEY 미설정 → 폴백 불가" 경고는 **키를 설정해도 참**인 이중 거짓이었고, agy 쿼터가 소진되고 나서야 발각됐다. **정본 모순(D11)도 같은 병**이다 — backends `read-only` ↔ routing `workspace-write`가 디스패처 `die` 뒤에 무증상 잠복. ⇒ 선언한 폴백·계약은 **자가점검이 실물인지 확인**해야 한다(self-check에 추가함).
+
+**denylist 가드는 원리적으로 진다.** 워커 쓰기 차단을 denylist로 짰더니 `python3 -c open(w)`·`node -e writeFileSync`·`>|`·`/usr/bin/touch`·`eval "$(base64 -d)"`·`curl -o`·`rsync`가 전부 통과(codex-critic 실측 7종). **allowlist로 뒤집어야** 실패 모드가 "조용히 뚫림"→"과차단"이 된다. 과차단은 복구 가능(워커가 result에 적고 orchestrator가 실행)하나 미탐은 정책을 소리 없이 무너뜨린다. 단 그래도 **적대적 샌드박스는 아니다** — 허용 명령(`pnpm test`)의 간접 쓰기는 설계상 남는다.
+
+**점검·검증은 반드시 일부러 깨서 확인하라.** INV15 초판은 `jq select`가 값이 틀려도 exit 0이라 false-PASS였고, 내 깨뜨림 검증 1차는 **zsh가 `$SC`를 단어분할하지 않아** command-not-found로 죽은 exit code를 "탐지"로 오독해 9/9 가짜 통과였다(고치려던 결함 그 자체). "PASS 문자열이 보이니 됐다"는 점검이 아니다. **CI 게이트도 음성 대조군으로 확인**하라 — 일부러 깬 PR이 red 나는 걸 봐야 게이트가 실물이다.
+
+**`git add -A`는 웨이브 커밋에서 금지에 가깝다.** 세션 최초 `git status`에서 `?? .venv/`를 보고 사용자에게 보고까지 해놓고 `git add -A`로 1,498파일·277,270줄을 커밋했다. 경로 명시 스테이징 + 커밋 전 `git diff --cached --stat | tail -1`로 규모 확인. **병행 세션이 같은 작업트리를 쓰면 남의 미커밋 작업까지 쓸어담는다**(실제 발생).
+
+**측정 도구의 판정은 ground truth 하나로 좁히고, 임계값엔 표준 근거를 대라.** M1 오버플로우 판정에 `scrollWidth`와 `getBoundingClientRect` offender를 OR로 묶었더니 부모 `overflow:hidden`에 클립된 장식요소를 오탐 → 정상 UI 반려. 그런데 `scrollWidth`도 **클립된 컨테이너에서 계속 커진다** → 실효 `overflow-x`(CSS 전파: html이 visible이면 body로) 기준으로 재수정. 탭타겟 44px도 근거 없었다 — **웹 표준은 WCAG 2.2 AA 24px**, 44는 AAA/Apple HIG(네이티브). 실측 14건 중 12건이 AA 통과였다.
+
+**agy CLI는 헤드리스에서 이미지를 못 읽는다.** `read_file` 권한을 프롬프트할 수 없어 자동 거부 → `--dangerously-skip-permissions` 필요. 2026-07-15의 1회 성공은 재현되지 않았다. **REST(`gemini_api.sh`)는 inline base64라 그 권한 협상이 없다** — 멀티모달 판정은 API 경로가 안정적. API 모델명은 agy 명명과 다르다(`gemini-3.1-pro-high` → `gemini-3.1-pro-preview`).
+
+**worker**: claude-main(리서치 2 + 통제실험 6), gemini=agy/api(제3자 진단 + 블라인드 시각평가 2R), codex-critic(적대적 비평 2회 — 리서치안 4건 반려 + 구현 **NO-GO 5건**, 전부 타당). orchestrator(실측·구현·**자기정정 8회**)
