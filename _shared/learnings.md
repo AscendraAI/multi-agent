@@ -149,3 +149,12 @@
 **agy CLI는 헤드리스에서 이미지를 못 읽는다.** `read_file` 권한을 프롬프트할 수 없어 자동 거부 → `--dangerously-skip-permissions` 필요. 2026-07-15의 1회 성공은 재현되지 않았다. **REST(`gemini_api.sh`)는 inline base64라 그 권한 협상이 없다** — 멀티모달 판정은 API 경로가 안정적. API 모델명은 agy 명명과 다르다(`gemini-3.1-pro-high` → `gemini-3.1-pro-preview`).
 
 **worker**: claude-main(리서치 2 + 통제실험 6), gemini=agy/api(제3자 진단 + 블라인드 시각평가 2R), codex-critic(적대적 비평 2회 — 리서치안 4건 반려 + 구현 **NO-GO 5건**, 전부 타당). orchestrator(실측·구현·**자기정정 8회**)
+
+## [2026-07-17] [grep-miscount-and-evidence-integrity]
+**집계는 grep 한 방으로 끝내지 말고 모집단을 먼저 못박아라.** 같은 웨이브에서 동종 오류를 3번 냈다. ①`grep -i "fix"`가 제품명 `FIXX`("3 FIXX products")를 잡아 fix 커밋을 12개로 셈(실제 `^fix(` 11개). ②AI 인용 도메인 집계에서 `youtube.com`을 언론사로 분류해 8→9로 셈. ③`--all`(74)과 HEAD(63)를 섞을 뻔함. 교훈: 세는 대상은 **앵커 붙인 정규식**(`^fix\(`)으로, 분류는 **항목을 눈으로 나열**해서, 뺄셈은 **같은 모집단**에서. 그리고 `A - B = C`를 쓸 거면 `B + C == A` 검산을 반드시 출력할 것.
+**적대적 검증자도 틀린다. 전제를 재검산하라.** codex-critic이 `rev-list HEAD --count`=74로 전제하고 "모집단 혼합" blocking 2건을 냈으나 실측 HEAD=63이었다. critic 지적 12건 중 11건은 타당했으나 최대 지적 2건이 무효였다. **NO-GO를 통째로 수용하는 것도, 통째로 무시하는 것도 게으르다** — 지적마다 명령을 돌려 판정하고, 기각할 땐 근거를 log에 남긴다.
+**인용은 증거다. 줄이면 조작이다.** 초안이 커밋 메시지 2건을 잘라 인용하면서 "자르지 않고 그대로 옮기겠습니다"라고 썼다(`GPX read on SDK 54+ filesystem`에서 `+ open saved plans` 누락 등). git을 증거로 내세우는 글에서 git 인용을 손댄 셈. **규칙 충돌 시 해법은 "몰래 고치기"가 아니라 "고쳤다고 밝히기"** — em dash 금지(규칙1) vs 인용 왜곡 금지(규칙5)는 "원문의 대시 하나만 표기 규칙에 맞춰 쉼표로 바꿨고 나머지는 손대지 않았습니다"를 본문에 넣어 동시 충족했다.
+**사용자 수정본은 diff부터 뜨고 파급을 좇아라.** 사용자가 도입부에서 "경영정보시스템"을 뺐는데 다음 문단이 그걸 계속 설명하고 있었다(붕 뜬 참조). 또 "IT 스타트업 5년 이상"은 PDF 재검산 결과 3년 11개월이었다. 사용자 편집도 검수 대상이다.
+**브라우저 확장이 죽으면 CDP로 직접 몰아라.** claude-in-chrome이 탭그룹 경합·타임아웃으로 반복 실패 → 헤드리스 크롬 `--remote-debugging-port` + WebSocket CDP 직결로 우회해 Expo web 실화면 3장 캡처 성공(`_shared/tools/design-measure.mjs`와 동일 원리). RN web은 body가 아니라 내부 ScrollView가 스크롤하므로 `captureBeyondViewport`가 아니라 스크롤 컨테이너를 찾아 `scrollTop`을 옮겨야 한다.
+**worker**: deep-research 하네스(107 에이전트·5.3M 토큰·확정10/기각15), codex-critic 2회(전략 NO-GO, 글 NO-GO), orchestrator(실측·집계·자기정정 3회)
+**"안 먹었다"는 판정도 검증 대상이다.** BlogPost.astro에 이미지 CSS를 넣고 실측했더니 computed `max-height: none`이라 "규칙이 안 붙는다"고 오판하고 셀렉터·스코프를 파기 시작했다. 실제로는 `http-server`가 캐시한 옛 HTML을 재고 있었고 규칙은 처음부터 정확했다(`-c-1`로 캐시 끄니 즉시 적용). **측정이 부정 결과를 내면 대상보다 계측기를 먼저 의심하라.** 같은 세션에서 낸 4번째 자기오류이자, 앞의 3건(grep 오검출·모집단 혼합)과 같은 뿌리 — 한 번의 관측을 결론으로 승격시킨 것.
