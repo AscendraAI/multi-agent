@@ -180,3 +180,15 @@
 **NO-GO의 심각도는 오케스트레이터가 재판정한다.** critic이 LICENSE 원저작권 줄의 `(original work)` 접미사를 BLOCKER로 냈다. MIT 저작권 고지 자체는 식별 가능해 법적 위반은 아니었으나, task의 명시적 제약("원문 줄 그대로 보존, 병기만")과 NOTICE의 "Do not remove them"과의 자기모순이라 BLOCKER 유지가 타당했다 — 실측으로 확인 후 수용. **통째 수용도 통째 기각도 게으르다**([[한 번의 관측을 결론으로 승격]]과 같은 뿌리)는 원칙을 이번엔 심각도 축에도 적용.
 
 **worker**: codex-critic 2회(통합 리뷰 NO-GO 3건 → 재리뷰 GO), codex-main(3파일 수정·카탈로그 5키), orchestrator(실측 검증·머지·자기 기동재검증)
+
+## [2026-07-18] [final-polish · 적대적 감사 2라운드]
+
+**"완벽하게"는 자기 눈으로 선언하지 말고 적대적 감사로 증명하라.** "완벽하게 만들자" 요청에 codex-critic에게 세션 전체(29커밋)를 감사시켰더니 **치명 결함 다발**이 나왔다(가드 우회 6종·fail-open·retry 선언≠구현·routing 문구 불일치·self-check 거짓 PASS·CHANGELOG 정지). 그리고 그 수정을 **재검증**시키자 또 나왔다(env/command 우회·내가 만든 과차단 4종·내가 만든 치명 fail-open). 자기평가로 "됐다" 했으면 전부 묻혔다. 2라운드가 정답이었다.
+
+**보안 가드는 내 수정이 새 fail-open을 만들기 쉽다 — 매 수정을 실측하라.** 주석 제거 정규식 `s/[...][^<newline>]*//g`가 BSD sed에서 죽어(unbalanced brackets — `[^...]`에 개행 금지) probe가 비고 **전 검사가 무력화**됐다. "우회를 막는" 커밋이 오히려 전부 뚫었다. 교훈: 가드 수정 후 반드시 (a)우회 DENY (b)정상 통과 (c)fail-closed 3축을 실측. self-check에 **행동 검사**(문자열 grep 아님)로 박아 회귀 방지.
+
+**과차단은 미탐만큼 나쁘다 — 워커 역할을 죽인다.** 우회를 잡으려 넣은 패턴들(`-o`·`$()`전면·`system(`·`print >`)이 정상 명령(`grep -o`·`git diff $(git merge-base)`·`grep "system("`)을 오차단했다. 커널 sandbox가 이미 외부 쓰기를 막으므로 **deny 계층은 보안경계가 아니라 명백한 직접쓰기 안내**다 — 오탐 패턴은 이득보다 손해. 세그먼트를 `()`로 쪼개 **명령치환 내부 첫 토큰을 검사**하면 `$(touch)`는 막고 `$(git ...)`는 통과한다(전면 차단 불필요).
+
+**"CI가 강제자"는 branch protection required check 없이는 거짓이다.** self-check CI가 돌아도 main이 미보호면 red여도 머지된다(사후 탐지). required status check로 지정해야 실제 게이트. 음성 대조군(INV 위반 PR)이 `state: BLOCKED`로 막히는 것까지 확인해야 "게이트다"라고 말할 수 있다. autonomy-policy §5가 6주간 aspirational이었다.
+
+**worker**: codex-critic(적대적 감사 2회 — 감사+재검증, 매번 실제 치명결함 적출). orchestrator(실측·구현·**자기정정 다수** — 내가 만든 fail-open·과차단을 codex가 잡음)
